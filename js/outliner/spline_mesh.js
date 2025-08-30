@@ -1925,19 +1925,18 @@ new NodePreviewController(SplineMesh, {
 
         this.dispatchEvent('update_faces', { element });
     },
-    // Aza assumption: tell preview to display white overlay when hovered
+    // Aza assumption: tell preview to display white overlay when hovered or selected
     updateHighlight(element, hover_cube, force_off) {
-        var mesh = element.mesh;
-        let highlighted = (
-            Settings.get('highlight_cubes') &&
-            ((hover_cube == element && !Transformer.dragging) || element.selected) &&
-            Modes.edit &&
-            !force_off
-        ) ? 1 : 0;
+		var mesh = element.mesh;
+		let highlighted = (
+			Settings.get('highlight_cubes') &&
+			((hover_cube == element && !Transformer.dragging) || element.selected) &&
+			Modes.edit &&
+			!force_off
+		) ? 1 : 0;
         
         let color_selected = new THREE.Color().set(markerColors[element.color].pastel);
         let color_normal = new THREE.Color().set(markerColors[element.color].standard);
-
 		let color;
 		if (BarItems.spline_selection_mode.value == 'object' && element.render_mode !== "mesh" && highlighted == 1) {
 			color = color_selected;
@@ -1945,22 +1944,21 @@ new NodePreviewController(SplineMesh, {
 			color = color_normal;
 		}
 
-        let line_colors = [];
-		let pos_attr = mesh.pathLine.geometry.getAttribute("position").array.slice();
-		pos_attr.forEach((v, i) => {
-			if ((i + 1) % 3 == 0) {
-			    line_colors.push(color.r, color.g, color.b);
-			}
-		});
+		if (mesh.geometry.attributes.highlight.array[0] != highlighted) {
+            let line_colors = [];
+		    let pos_attr = mesh.pathLine.geometry.getAttribute("position").array.slice();
+		    pos_attr.forEach((v, i) => {
+		    	if ((i + 1) % 3 == 0) {
+		    	    line_colors.push(color.r, color.g, color.b);
+		    	}
+		    });
 
-		mesh.pathLine.geometry.setAttribute('color', new THREE.Float32BufferAttribute(line_colors, 3));
-		mesh.pathLine.geometry.needsUpdate = true;
+		    mesh.pathLine.geometry.setAttribute('color', new THREE.Float32BufferAttribute(line_colors, 3));
+			mesh.geometry.attributes.highlight.array.set(Array(mesh.geometry.attributes.highlight.count).fill(highlighted));
+			mesh.geometry.attributes.highlight.needsUpdate = true;
+		}
 
-        let array = new Array(mesh.geometry.attributes.highlight.count).fill(highlighted);
-        mesh.geometry.attributes.highlight.array.set(array);
-        mesh.geometry.attributes.highlight.needsUpdate = true;
-
-        this.dispatchEvent('update_highlight', { element });
+		this.dispatchEvent('update_highlight', {element});
     },
 	updatePixelGrid(element) {
 		var mesh = element.mesh;
