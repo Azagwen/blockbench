@@ -1,4 +1,5 @@
 import { setProjectTitle } from "../interface/interface";
+import { currentwindow, ipcRenderer, shell } from "../native_apis";
 
 export class ModelProject {
 	constructor(options = {}, uuid) {
@@ -478,6 +479,15 @@ new Property(ModelProject, 'string', 'modded_entity_version', {
 			}
 		}
 		return options;
+	}
+});
+new Property(ModelProject, 'string', 'java_block_version', {
+	label: 'dialog.project.java_block_version',
+	default: '1.21.6',
+	condition: {formats: ['java_block']},
+	options: {
+		'1.9.0': '1.9 - 1.21.5',
+		'1.21.6': '1.21.6+',
 	}
 });
 new Property(ModelProject, 'string', 'credit', {
@@ -1044,12 +1054,14 @@ BARS.defineActions(function() {
 						Project.texture_width != texture_width ||
 						Project.texture_height != texture_height
 					) {
+						/*
 						// Adjust UV Mapping if resolution changed
 						if (!Project.box_uv && !box_uv && !Format.per_texture_uv_size &&
 							(Project.texture_width != texture_width || Project.texture_height != texture_height)
 						) {
 							save = Undo.initEdit({elements: [...Cube.all, ...Mesh.all], uv_only: true, uv_mode: true})
 							Cube.all.forEach(cube => {
+								if (cube.box_uv) return;
 								for (var key in cube.faces) {
 									var uv = cube.faces[key].uv;
 									uv[0] *= texture_width / Project.texture_width;
@@ -1067,7 +1079,7 @@ BARS.defineActions(function() {
 									}
 								}
 							})
-						}
+						}*/
 						// Convert UV mode per element
 						if (Project.box_uv != box_uv &&
 							((box_uv && !Cube.all.find(cube => cube.box_uv)) ||

@@ -1,7 +1,9 @@
-import { THREE } from '../../lib/libs';
+import { THREE } from '../lib/libs';
+import OrbitControls from './OrbitControls';
 import StateMemory from "../util/state_memory";
 import { ConfigDialog } from '../interface/dialog';
 import { toSnakeCase } from '../util/util';
+import { electron, ipcRenderer } from '../native_apis';
 
 window.scene = null;
 window.main_preview = null;
@@ -220,7 +222,7 @@ export class Preview {
 		this.side_view_target = new THREE.Vector3();
 
 		//Controls
-		this.controls = new THREE.OrbitControls(this.camPers, this);
+		this.controls = new OrbitControls(this.camPers, this);
 		this.controls.minDistance = 1;
 		this.controls.maxDistance = 3960;
 		this.controls.enableKeys = false;
@@ -299,7 +301,7 @@ export class Preview {
 				error_element.innerHTML = error_element.innerHTML +
 					'\nAlternatively, try to <a href onclick="restartWithoutHardwareAcceleration()">Restart without Hardware Acceleration.</a>'
 				
-				var {BrowserWindow} = require('@electron/remote');
+				var {BrowserWindow} = electron;
 				new BrowserWindow({
 					icon:'icon.ico',
 					backgroundColor: '#ffffff',
@@ -394,7 +396,8 @@ export class Preview {
 
 		var objects = []
 		Outliner.elements.forEach(element => {
-			if (element.mesh && element.mesh.geometry && element.visibility && !element.locked) {
+			if (element.visibility === false || element.locked === true) return;
+			if (element.mesh && element.mesh.geometry) {
 				objects.push(element.mesh);
 				if (Modes.edit && element.selected) {
 					if (element.mesh.vertex_points && (element.mesh.vertex_points.visible || options.vertices)) {
@@ -408,6 +411,9 @@ export class Preview {
 				}
 			} else if (element instanceof Locator) {
 				objects.push(element.mesh.sprite);
+			} else if (element instanceof ArmatureBone) {
+				if (Toolbox.selected.id == 'weight_brush') return;
+				objects.push(element.mesh.children[0]);
 			}
 		})
 		for (let group of Group.multi_selected) {
@@ -437,7 +443,12 @@ export class Preview {
 				return a.distance - b.distance;
 			});
 		} else {
-			intersects.sort((a, b) => a.distance - b.distance);
+			intersects.sort((a, b) => {
+				if (a.object.renderOrder > 10 || b.object.renderOrder > 10) {
+					return b.object.renderOrder - a.object.renderOrder;
+				}
+				return a.distance - b.distance;
+			});
 		}
 		if ((settings.seethrough_outline.value && BarItems.selection_mode.value == 'edge')) {
 			let all_intersects = intersects;
@@ -452,8 +463,12 @@ export class Preview {
 			let element, face;
 			while (true) {
 				element = OutlinerNode.uuids[intersect_object.name];
-				if (element.getTypeBehavior('cube_faces') && element.getTypeBehavior('select_faces')) {
-					face = intersect_object.geometry.faces[Math.floor(intersects[0].faceIndex / 2)];
+				if (element.getTypeBehavior('cube_faces')) {
+					if (element.getTypeBehavior('select_faces')) {
+						face = intersect_object.geometry.faces[Math.floor(intersects[0].faceIndex / 2)];
+					} else {
+						face = Object.keys(element.faces)[0];
+					}
 				} else if (element instanceof Mesh) {
 					let index = intersects[0].faceIndex;
 					for (let key in element.faces) {
@@ -858,7 +873,7 @@ export class Preview {
 				if (Modes.paint && !(Toolbox.selected.id == 'fill_tool' && BarItems.fill_mode.value == 'selected_elements')) {
 					event = 0;
 				}
-				if (data.element.parent.type === 'group' && (data.element instanceof Mesh == false || data.element instanceof SplineMesh == false || select_mode == 'object') && (
+				if (data.element.parent instanceof OutlinerNode && (data.element instanceof Mesh == false || data.element instanceof SplineMesh == false || select_mode == 'object') && (
 					(Animator.open && !data.element.constructor.animator) ||
 					group_select ||
 					(!Format.rotate_cubes && Format.bone_rig && ['rotate_tool', 'pivot_tool'].includes(Toolbox.selected.id))
@@ -1278,6 +1293,7 @@ export class Preview {
 			!this.controls.hasMoved &&
 			!this.selection.activated &&
 			!Transformer.dragging &&
+			Toolbox.selected.selectElements != false &&
 			!this.selection.click_target
 		) {
 			unselectAllElements();
@@ -1292,6 +1308,22 @@ export class Preview {
 		scope.mouse.y = - ((y - canvas_offset.top) / scope.height) * 2 + 1;
 		scope.raycaster.setFromCamera( scope.mouse, scope.camOrtho );
 		return scope.raycaster.ray.origin
+	}
+	vectorToScreenPosition(vector) {
+		vector = vector.clone();
+		let widthHalf = this.canvas.width / 2;
+		let heightHalf = this.canvas.height / 2;
+
+		vector.project(this.camera);
+	
+		vector.x = ( vector.x * widthHalf ) + widthHalf;
+		vector.y = - ( vector.y * heightHalf ) + heightHalf;
+		vector.divideScalar(window.devicePixelRatio);
+	
+		return { 
+			x: vector.x,
+			y: vector.y
+		};
 	}
 	showContextMenu(event) {
 		Prop.active_panel = 'preview';
@@ -1343,6 +1375,7 @@ export class Preview {
 	//Selection Rectangle
 	startSelRect(event) {
 		if (this.sr_move_f) return;
+		if (Toolbox.selected.selectElements == false) return;
 		var scope = this;
 		if (Modes.edit) {
 			this.sr_move_f = function(event) { scope.moveSelRect(event)}
@@ -1420,7 +1453,7 @@ export class Preview {
 				isSelected = element.preview_controller.viewportRectangleOverlap(element, {projectPoint, extend_selection, rect_start, rect_end, preview: this});
 			}
 			if (isSelected) {
-				element.selectLow();
+				element.markAsSelected();
 			}
 		})
 		TickUpdates.selection = true;
@@ -1514,6 +1547,7 @@ export class Preview {
 		}
 		Preview.all.remove(this);
 	}
+	static selected = null;
 }
 	Preview.prototype.menu = new Menu([
 		'screenshot_model',
@@ -2259,6 +2293,7 @@ BARS.defineActions(function() {
 			wireframe: {name: true, icon: 'far.fa-square', condition: () => (!Toolbox.selected.allowed_view_modes || Toolbox.selected.allowed_view_modes.includes('wireframe'))},
 			uv: {name: true, icon: 'grid_guides', condition: () => (!Toolbox.selected.allowed_view_modes || Toolbox.selected.allowed_view_modes.includes('uv'))},
 			normal: {name: true, icon: 'fa-square-caret-up', condition: () => ((!Toolbox.selected.allowed_view_modes || Toolbox.selected.allowed_view_modes.includes('normal')) && Mesh.all.length)},
+			vertex_weight: {name: true, icon: 'weight', condition: () => ArmatureBone.all.length && (!Toolbox.selected.allowed_view_modes || Toolbox.selected.allowed_view_modes.includes('vertex_weight'))},
 			material: {name: true, icon: 'pages', condition: () => ((!Toolbox.selected.allowed_view_modes || Toolbox.selected.allowed_view_modes.includes('material')) && TextureGroup.all.find(tg => tg.is_material))},
 		},
 		onChange() {

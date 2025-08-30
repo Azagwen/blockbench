@@ -1,3 +1,4 @@
+import { currentwindow, fs, nativeImage } from "../native_apis";
 
 function createEmptyCanvas(width, height) {
 	let canvas = document.createElement('canvas');
@@ -144,7 +145,7 @@ export const ScreencamGIFFormats = {
 
 			vars.apng_encoder.finish();
 
-			var base64Out = bytesToBase64(vars.apng_encoder.stream().bin);
+			var base64Out = APNGencoder.bytesToBase64(vars.apng_encoder.stream().bin);
 			let dataUrl = "data:image/png;base64," + base64Out;
 			Screencam.returnScreenshot(dataUrl, vars.cb);
 		}

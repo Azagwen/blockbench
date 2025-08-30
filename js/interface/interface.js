@@ -1,6 +1,6 @@
 import { Blockbench } from "../api";
 import { translateUI } from "../languages";
-import { ConfigDialog } from "./dialog";
+import { currentwindow } from "../native_apis";
 
 export class ResizeLine {
 	constructor(id, data) {
@@ -447,9 +447,25 @@ Interface.definePanels = function(callback) {
 			})
 		}
 		$.extend(true, Interface.data, interface_data)
+
+		Blockbench.onUpdateTo('5.0.0-beta.2', () => {
+			let lists = [Interface.data.right_bar, Interface.data.left_bar];
+			for (let mode_id in Interface.data.modes) {
+				let mode_data = Interface.data.modes[mode_id];
+				lists.push(mode_data.left_bar, mode_data.right_bar)
+			}
+			lists.forEach(list => {
+				if (list instanceof Array) {
+					let index = list.indexOf('element');
+					if (index != -1) list[index] = 'transform';
+				}
+			})
+			console.log('Upgraded sidebar order to 5.0');
+		})
 	} catch (err) {
 		console.error(err);
 	}
+
 })()
 
 //Misc
@@ -654,6 +670,7 @@ export function updateInterface() {
 	updatePanelSelector();
 	resizeWindow()
 	localStorage.setItem('interface_data', JSON.stringify(Interface.data))
+	delete TickUpdates.interface;
 }
 
 export function resizeWindow(event) {

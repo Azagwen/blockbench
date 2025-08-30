@@ -1,6 +1,9 @@
 import VertShader from './../shaders/texture.vert.glsl';
 import FragShader from './../shaders/texture.frag.glsl';
 import { prepareShader } from '../shaders/shader';
+import { Blockbench } from '../api';
+import { clipboard, fs, ipcRenderer, nativeImage, openFileInEditor } from '../native_apis';
+import { Filesystem } from '../file_system';
 
 let tex_version = 1;
 
@@ -787,12 +790,12 @@ export class Texture {
 				Blockbench.showMessageBox({
 					translateKey: 'loose_texture',
 					icon: 'folder_open',
-					buttons: [tl('dialog.ok'), tl('message.loose_texture.change')],
+					buttons: [tl('message.loose_texture.change'), tl('dialog.ignore')],
 					checkboxes: {
 						dont_show_again: {value: false, text: 'dialog.dontshowagain'}
 					}
 				}, (result, checkboxes = {}) => {
-					if (result === 1) {
+					if (result === 0) {
 						this.reopen()
 					}
 					if (checkboxes.dont_show_again) {
@@ -1019,7 +1022,7 @@ export class Texture {
 			Blockbench.showQuickMessage('texture.error.file')
 			return this;
 		}
-		showItemInFolder(this.path)
+		Filesystem.showFileInFolder(this.path)
 		return this;
 	}
 	openEditor() {
@@ -1029,11 +1032,9 @@ export class Texture {
 
 		} else {
 			if (fs.existsSync(settings.image_editor.value)) {
-				if (Blockbench.platform == 'darwin') {
-					require('child_process').exec(`open '${this.path}' -a '${settings.image_editor.value}'`)
-				} else {
-					require('child_process').spawn(settings.image_editor.value, [this.path])
-				}
+				ipcRenderer.invoke('get-launch-setting', {key: 'image_editor'}).then(editor => {
+					openFileInEditor(this.path, editor);
+				})
 			} else {
 				Blockbench.showMessageBox({
 					icon: 'fas.fa-pen-square',
@@ -1841,6 +1842,28 @@ export class Texture {
 				}
 			},
 			'resize_texture',
+			{
+				name: 'menu.texture.flipbook_animation',
+				icon: (texture) => texture.frameCount > 1,
+				condition: (tex) => Format.animated_textures,
+				click(texture) {
+					if (Format.per_texture_uv_size) {
+						let is_animated = texture.frameCount;
+						if (!is_animated && texture.uv_height == texture.uv_width) {
+							BarItems.animated_texture_editor.click();
+							return;
+						}
+						Undo.initEdit({textures: [texture]});
+						if (is_animated) {
+							texture.uv_height = texture.height * (texture.uv_width / texture.width);
+						} else {
+							texture.uv_height = texture.uv_width;
+						}
+						Undo.finishEdit('Toggle flipbook animation');
+						updateSelection();
+					}
+				}
+			},
 			'animated_texture_editor',
 			'create_material',
 			'append_to_template',
@@ -2071,13 +2094,34 @@ export class Texture {
 		}
 	})
 
-export function saveTextures(lazy = false) {
-	Texture.all.forEach(function(tex) {
-		if (!tex.saved) {
-			if (lazy && isApp && (!tex.path || !fs.existsSync(tex.path))) return;
-			tex.save()
-		}
+export async function saveTextures(lazy = false) {
+	let textures_to_save = Texture.all.filter(tex => {
+		if (tex.saved) return false;
+		if (lazy && isApp && (!tex.path || !fs.existsSync(tex.path))) return false;
+		return true;
 	})
+	let will_open_pop_up = textures_to_save.filter(tex => {
+		return !(isApp && tex.path && fs.existsSync(tex.path));
+	});
+	if (will_open_pop_up.length >= 2) {
+		function askNextStep(resolve) {
+			let texture_list = will_open_pop_up.map(tex => '- ' + tex.name).join('\n');
+			Blockbench.showMessageBox({
+				title: 'action.save_textures',
+				message: tl('message.save_all_textures.message') + '\n\n' + texture_list,
+				buttons: ['dialog.unsaved_work.save_all', 'message.save_all_textures.skip']
+			}, (button) => {
+				resolve(button == 0);
+			});
+		}
+		let should_save = await new Promise(askNextStep);
+		if (!should_save) {
+			will_open_pop_up.forEach(tex => textures_to_save.remove(tex));
+		}
+	}
+	for (let tex of textures_to_save) {
+		tex.save();
+	}
 }
 export function loadTextureDraggable() {
 	console.warn('loadTextureDraggable no longer exists');
@@ -2207,6 +2251,7 @@ BARS.defineActions(function() {
 				multiple: true,
 				startpath: start_path
 			}, function(files) {
+				console.log(files)
 				if (files[0].name.endsWith('texture_set.json')) {
 					importTextureSet(files[0]);
 					return;
@@ -2278,6 +2323,19 @@ BARS.defineActions(function() {
 					} 
 				})
 				Undo.finishEdit('Change textures folder')
+			}
+		}
+	})
+	new Toggle('search_textures', {
+		icon: 'search',
+		category: 'edit',
+		onChange(value) {
+			Panels.textures.inside_vue._data.search_term = '';
+			Panels.textures.inside_vue._data.search_enabled = value;
+			if (value) {
+				Vue.nextTick(() => {
+					document.getElementById('texture_search_bar').firstChild.focus();
+				});
 			}
 		}
 	})
@@ -2465,9 +2523,9 @@ Interface.definePanels(function() {
 
 
 					if (isNodeUnderCursor(Interface.preview, e2)) {
-						var data = Canvas.raycast(e2)
+						let data = Canvas.raycast(e2)
 						if (data.element && data.face) {
-							var elements = data.element.selected ? UVEditor.getMappableElements() : [data.element];
+							let elements = data.element.selected ? UVEditor.getMappableElements() : [data.element];
 
 							if (Format.per_group_texture) {
 								elements = [];
@@ -2629,6 +2687,8 @@ Interface.definePanels(function() {
 					'create_texture',
 					'create_texture_group',
 					'append_to_template',
+					'+',
+					'search_textures',
 				]
 			})
 		],
@@ -2642,6 +2702,8 @@ Interface.definePanels(function() {
 				textures: Texture.all,
 				texture_groups: TextureGroup.all,
 				currentFrame: 0,
+				search_enabled: false,
+				search_term: '',
 			}},
 			components: {'Texture': texture_component},
 			methods: {
@@ -2713,8 +2775,21 @@ Interface.definePanels(function() {
 					if (Blockbench.hasFlag('dragging_textures')) return;
 					unselectTextures();
 				},
+				search(list) {
+					const search_term = this.search_enabled && this.search_term.toLowerCase();
+					if (search_term) {
+						return list.filter(tex => {
+							return tex.name.toLowerCase().includes(search_term) || tex.folder.toLowerCase().includes(search_term);
+						});
+					} else {
+						return list;
+					}
+				},
 				getUngroupedTextures() {
-					return this.textures.filter(tex => !(tex.group && TextureGroup.all.find(g => g.uuid == tex.group)));
+					return this.search(this.textures.filter(tex => {
+						if (tex.group && TextureGroup.all.find(g => g.uuid == tex.group)) return false;
+						return true;
+					}));
 				},
 				dragTextureGroup(texture_group, e1) {
 					if (e1.button == 1) return;
@@ -2837,10 +2912,20 @@ Interface.definePanels(function() {
 	
 					addEventListeners(document, 'mousemove touchmove', move, {passive: false});
 					addEventListeners(document, 'mouseup touchend', off, {passive: false});
+				},
+				updateSearch(event) {
+					if (this.search_enabled && !this.search_term && !document.querySelector('#texture_search_bar > input:focus')) {
+						this.search_enabled = false;
+						BarItems.search_textures.set(false);
+					}
 				}
 			},
 			template: `
 				<div>
+					<search-bar id="texture_search_bar" class="panel_search_bar"
+						v-if="search_enabled" v-model="search_term"
+						@input="updateSearch()" onfocusout="Panels.textures.vue.updateSearch()"
+					/>
 					<ul id="texture_list" class="list mobile_scrollbar" @contextmenu.stop.prevent="openMenu($event)" @click.stop="unselect($event)">
 						<li
 							v-for="texture_group in texture_groups" :key="texture_group.uuid" :id="texture_group.uuid"
@@ -2886,7 +2971,7 @@ Interface.definePanels(function() {
 									</i>
 								</li>
 								<Texture
-									v-for="texture in texture_group.getTextures()"
+									v-for="texture in search(texture_group.getTextures())"
 									:key="texture.uuid"
 									:texture="texture"
 								></Texture>

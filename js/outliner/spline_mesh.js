@@ -253,6 +253,8 @@ export class SplineMesh extends OutlinerElement {
         for (var key in SplineMesh.properties) {
             SplineMesh.properties[key].reset(this);
         }
+		this.color = Math.floor(Math.random()*markerColors.length);
+
         if (data && typeof data === 'object') {
             this.extend(data)
         }
@@ -1507,6 +1509,7 @@ export class SplineMesh extends OutlinerElement {
 		resizable: true,
 		rotatable: true,
 		has_pivot: true,
+		marker_color: true,
 	}
     updateShading(shade_smooth) {
         this.smooth_shading = shade_smooth;
@@ -1526,66 +1529,50 @@ SplineMesh.prototype.menu = new Menu([
     ...Outliner.control_menu_group,
     new MenuSeparator('settings'),
     'convert_to_mesh',
-    {
-        name: 'menu.cube.color', icon: 'color_lens', children() {
-            return markerColors.map((color, i) => {
-                return {
-                    icon: 'bubble_chart',
-                    color: color.standard,
-                    name: color.name || 'cube.color.' + color.id,
-                    click(cube) {
-                        cube.forSelected(function (obj) {
-                            obj.setColor(i)
-                        }, 'change color')
-                    }
-                }
-            })
-        }
-    },
+    'set_element_marker_color',
     "randomize_marker_colors",
-            {name: 'menu.cube.texture', icon: 'collections', condition: () => !Format.single_texture, children() {
-                var arr = [{
-                    icon: 'crop_square', 
-                    name: Format.single_texture_default ? 'menu.cube.texture.default' : 'menu.cube.texture.blank', 
-                    click(spline) { spline.forSelected((obj) => obj.applyTexture(false), 'texture blank') }
-                }]
-                let applied_texture;
-                main_loop: for (let spline of SplineMesh.selected) {
-                    let texture = spline.texture;
-                    if (texture) {
-                        if (!applied_texture) {
-                            applied_texture = texture;
-                        } else if (applied_texture != texture) {
-                            applied_texture = null;
-                            break main_loop;
-                        }
-                    }
+    {name: 'menu.cube.texture', icon: 'collections', condition: () => !Format.single_texture, children() {
+        var arr = [{
+            icon: 'crop_square', 
+            name: Format.single_texture_default ? 'menu.cube.texture.default' : 'menu.cube.texture.blank', 
+            click(spline) { spline.forSelected((obj) => obj.applyTexture(false), 'texture blank') }
+        }]
+        let applied_texture;
+        main_loop: for (let spline of SplineMesh.selected) {
+            let texture = spline.texture;
+            if (texture) {
+                if (!applied_texture) {
+                    applied_texture = texture;
+                } else if (applied_texture != texture) {
+                    applied_texture = null;
+                    break main_loop;
                 }
-                // Asa assumption: Compose final menu
-                Texture.all.forEach((t) => {
-                    arr.push({
-                        name: t.name,
-                        icon: (t.mode === 'link' ? t.img : t.source),
-                        marked: t == applied_texture,
-                        click(spline) { spline.forSelected((obj) => obj.applyTexture(t), 'apply texture') }
-                    })
-                })
-                return arr;
-            }},
+            }
+        }
+        // Asa assumption: Compose final menu
+        Texture.all.forEach((t) => {
+            arr.push({
+                name: t.name,
+                icon: (t.mode === 'link' ? t.img : t.source),
+                marked: t == applied_texture,
+                click(spline) { spline.forSelected((obj) => obj.applyTexture(t), 'apply texture') }
+            })
+        })
+        return arr;
+    }},
     new MenuSeparator('manage'),
     'rename',
     'toggle_visibility',
     'delete'
 ]);
 SplineMesh.prototype.buttons = [
-    Outliner.buttons.cyclic,
     Outliner.buttons.export,
     Outliner.buttons.locked,
     Outliner.buttons.visibility,
 ];
 
 new Property(SplineMesh, 'string', 'name', { default: 'spline' });
-new Property(SplineMesh, 'number', 'color', { default: Math.floor(Math.random() * markerColors.length) });
+new Property(SplineMesh, 'number', 'color');
 new Property(SplineMesh, 'vector', 'origin');
 new Property(SplineMesh, 'vector', 'rotation');
 new Property(SplineMesh, 'number', 'radial_resolution', {
@@ -1680,11 +1667,20 @@ new Property(SplineMesh, 'boolean', 'display_space', {
         }
     }
 });
+new Property(SplineMesh, 'boolean', 'cyclic', {
+    inputs: {
+        element_panel: {
+            input: {label: 'spline_mesh.cyclic', type: 'checkbox', description: 'spline_mesh.cyclic.desc'},
+            onChange() {
+                Canvas.updateView({elements: SplineMesh.selected, element_aspects: {geometry: true}});
+            }
+        }
+    }
+}); // If the spline should be closed or not.
 
 new Property(SplineMesh, 'boolean', 'export', { default: true });
 new Property(SplineMesh, 'boolean', 'visibility', { default: true });
 new Property(SplineMesh, 'boolean', 'locked');
-new Property(SplineMesh, 'boolean', 'cyclic'); // If the spline should be closed or not.
 new Property(SplineMesh, 'enum', 'render_order', { default: 'default', values: ['default', 'behind', 'in_front'] });
 
 OutlinerElement.registerType(SplineMesh, 'spline');

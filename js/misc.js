@@ -1,3 +1,5 @@
+import { currentwindow } from "./native_apis";
+
 window.osfs = '/'
 window.open_dialog = false;
 window.open_interface = false;
@@ -105,7 +107,7 @@ export function updateSelection(options = {}) {
 	Project.elements.forEach(obj => {
 		let included = Project.selected_elements.includes(obj);
 		if (included && !obj.selected && !obj.locked) {
-			obj.selectLow()
+			obj.markAsSelected()
 		} else if ((!included || obj.locked) && obj.selected) {
 			obj.unselect()
 			if (UVEditor.selected_element_faces[obj.uuid]) {

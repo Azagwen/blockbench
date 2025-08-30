@@ -95,7 +95,7 @@ export class Group extends OutlinerNode {
 					if (s instanceof Group) {
 						s.multiSelect()
 					} else if (!Outliner.selected.includes(s)) {
-						s.selectLow()
+						s.markAsSelected()
 					}
 				}
 			})
@@ -117,7 +117,7 @@ export class Group extends OutlinerNode {
 				selected.safePush(previous_first_selected);
 			}
 			this.children.forEach(function(s) {
-				s.selectLow()
+				s.markAsSelected()
 			})
 		}
 		if (Animator.open && Animation.selected) {
@@ -137,7 +137,7 @@ export class Group extends OutlinerNode {
 		this.selected = true;
 		Group.multi_selected.safePush(this);
 		this.children.forEach(function(s) {
-			s.selectLow()
+			s.markAsSelected()
 		})
 		TickUpdates.selection = true;
 		return this;
@@ -145,13 +145,10 @@ export class Group extends OutlinerNode {
 	selectChildren(event) {
 		console.warn('Group#selectChildren is deprecated');
 	}
-	selectLow(highlight) {
-		//Only Select
-		if (highlight !== false) {
-			this.selected = true
-		}
+	markAsSelected() {
+		this.selected = true
 		this.children.forEach(function(s) {
-			s.selectLow(highlight)
+			s.markAsSelected()
 		})
 		TickUpdates.selection = true;
 		return this;
@@ -355,10 +352,12 @@ export class Group extends OutlinerNode {
 		Canvas.updatePositions();
 		return copy;
 	}
-	getSaveCopy(project) {
-		var base_group = this.getChildlessCopy(true);
-		for (var child of this.children) {
-			base_group.children.push(child.getSaveCopy(project));
+	getSaveCopy(nested) {
+		let base_group = this.getChildlessCopy(true);
+		if (nested) {
+			for (let child of this.children) {
+				base_group.children.push(child.getSaveCopy(nested));
+			}
 		}
 		delete base_group.parent;
 		return base_group;
@@ -436,14 +435,17 @@ export class Group extends OutlinerNode {
 	}
 	static behavior = {
 		unique_name: () => Format.bone_rig,
+		parent: true,
+		select_children: 'all_first',
 		rotatable: true,
 		has_pivot: true,
+		use_absolute_position: true,
+		marker_color: true,
 	}
 }
 	Group.prototype.title = tl('data.group');
 	Group.prototype.type = 'group';
 	Group.prototype.icon = 'folder';
-	Group.prototype.isParent = true;
 	Group.prototype.name_regex = () => Format.bone_rig ? (Format.node_name_regex ?? 'a-zA-Z0-9_') : false;
 	Group.prototype.buttons = [
 		Outliner.buttons.autouv,
@@ -537,16 +539,13 @@ export class Group extends OutlinerNode {
 	})
 	Object.defineProperty(Group, 'selected', {
 		get() {
-			console.warn('"Group.selected" will be an array in the future!');
-			return Project.selected_groups?.[0]
+			return Project.selected_groups || []
 		},
-		set(group) {
-			console.warn('"Group.selected" will be an array in the future!');
-			if (group instanceof Group) {
-				Project.selected_groups.replace([group]);
-			} else {
-				Project.selected_groups.empty();
+		set(arr) {
+			if (arr instanceof Array == false) {
+				console.warn('Not an array!')
 			}
+			Project.selected_groups.replace(arr)
 		}
 	})
 	Object.defineProperty(Group, 'first_selected', {
@@ -576,6 +575,14 @@ new Property(Group, 'boolean', 'cem_attach', {
 	inputs: {
 		element_panel: {
 			input: {label: 'group.cem_attach', type: 'checkbox'}
+		}
+	}
+});
+new Property(Group, 'string', 'cem_model', {
+	condition: {formats: ['optifine_entity']},
+	inputs: {
+		element_panel: {
+			input: {label: 'group.cem_model', type: 'text'}
 		}
 	}
 });
@@ -650,24 +657,25 @@ BARS.defineActions(function() {
 		keybind: new Keybind({key: 'g', ctrl: true}),
 		click: function () {
 			Undo.initEdit({outliner: true});
-			var add_group = Group.first_selected
-			if (!add_group && selected.length) {
-				add_group = selected.last()
-			}
+			let lowest_selected = Outliner.selected.concat(Group.multi_selected).filter(n => !n.parent?.selected);
+			var add_group = lowest_selected.find(s => s instanceof Group) || lowest_selected[0];
 			var base_group = new Group({
 				origin: add_group ? add_group.origin : undefined
 			})
-			base_group.addTo(add_group)
 			base_group.isOpen = true
-		
 			if (Format.bone_rig) {
 				base_group.createUniqueName()
 			}
-			if (add_group instanceof OutlinerElement && selected.length > 1) {
-				selected.forEach(function(s, i) {
+
+			if (lowest_selected.length >= 2 && add_group) {
+				base_group.sortInBefore(add_group, 1);
+				lowest_selected.forEach((s) => {
 					s.addTo(base_group)
 				})
+			} else {
+				base_group.addTo(add_group)
 			}
+
 			base_group.init().select()
 			Undo.finishEdit('Add group');
 			Vue.nextTick(function() {
@@ -703,16 +711,11 @@ BARS.defineActions(function() {
 			if (Format.bone_rig) {
 				base_group.createUniqueName()
 			}
-			if (add_group instanceof Group) {
-				for (let group of Group.multi_selected) {
-					group.addTo(base_group);
-				}
-			} else if (add_group instanceof OutlinerElement) {
-				Outliner.selected.forEach(function(s, i) {
-					s.addTo(base_group);
-					s.preview_controller.updateTransform(s);
-				})
-			}
+			Outliner.selected.concat(Group.multi_selected).forEach((s) => {
+				if (s.parent?.selected) return;
+				s.addTo(base_group);
+				s.preview_controller.updateTransform(s);
+			})
 			base_group.select()
 			Undo.finishEdit('Add group');
 			Vue.nextTick(function() {
@@ -800,6 +803,7 @@ BARS.defineActions(function() {
 							]).show(event.target);
 						},
 						autocomplete(text, position) {
+							if (Settings.get('autocomplete_code') == false) return [];
 							let test = MolangAutocomplete.BedrockBindingContext.autocomplete(text, position);
 							return test;
 						}
