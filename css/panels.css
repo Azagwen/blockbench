@@ -2377,6 +2377,11 @@ span.controller_state_section_info {
 		mask-composite: exclude;
 		pointer-events: none;
 	}
+	#uv_element_outlines {
+		position: fixed;
+		z-index: 1;
+		pointer-events: none; /* WHY IS THIS HANDLED IN CSS??? */
+	}
 	#uv_frame {
 		height: 320px;
 		width: 320px;
@@ -2391,7 +2396,6 @@ span.controller_state_section_info {
 		--color-uv-background: rgba(50, 70, 240, 0.14);
 		--color-uv-background-hover: rgba(50, 70, 240, 0.3);
 		--uv-line-width: 2px;
-		z-index: 1;
 	}
 	#uv_frame .selection_rectangle {
 		z-index: 8;

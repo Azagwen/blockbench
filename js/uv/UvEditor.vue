@@ -99,7 +99,17 @@
 		</div>
 
 
+		<canvas
+			id="uv_element_outlines"
+			ref="uvCanvas"
+			:width=(width)
+			:height=(height)
+		></canvas>
+
 		<div id="uv_viewport"
+			class="checkerboard_target"
+			:class="{tiled_mode: overlay_canvas_mode == 'tiled'}"
+			ref="viewport"
 			@contextmenu="contextMenu($event)"
 			@pointerdown="onPointerDown($event)"
 			@touchstart="onTouchStart($event)"
@@ -109,9 +119,6 @@
 			@mousemove="updateMouseCoords($event)"
 			@mouseenter="onMouseEnter($event)"
 			@mouseleave="onMouseLeave($event)"
-			class="checkerboard_target"
-			:class="{tiled_mode: overlay_canvas_mode == 'tiled'}"
-			ref="viewport"
 			v-if="!hidden && mode !== 'face_properties'"
 			:style="{width: (width+8) + 'px', height: (height+8) + 'px', overflowX: (zoom > 1) ? 'scroll' : 'hidden', overflowY: (inner_height > height) ? 'scroll' : 'hidden'}"
 		>
@@ -121,95 +128,13 @@
 				width: (inner_width + 8 + getFrameMargin()[0]*2)+'px',
 				height: (inner_height + 8 + getFrameMargin()[1]*2)+'px',
 			}"></div>
+
 			<div id="uv_frame" ref="frame"
 				v-if="texture !== null"
 				@click.stop="reverseSelect($event)"
 				:class="{overlay_mode: uv_overlay && mode == 'paint'}"
 				:style="{width: inner_width + 'px', height: inner_height + 'px', margin: getFrameMargin(true), '--inner-width': inner_width + 'px', '--inner-height': inner_height + 'px'}"
 			>
-				<template v-for="element in getDisplayedUVElements()">
-
-					<template v-if="element.getTypeBehavior('cube_faces') && !element.box_uv">
-						<div class="cube_uv_face uv_face"
-							v-for="(face, key) in element.faces" :key="element.uuid + ':' + key"
-							v-if="(face.getTexture() == texture || texture == 0) && face.texture !== null && (display_uv !== 'selected_faces' || mode == 'paint' || isFaceSelected(element, key) || element.getTypeBehavior('select_faces') == false)"
-							:title="face_names[key]"
-							:class="{selected: isFaceSelected(element, key), unselected: display_uv === 'all_elements' && !mappable_elements.includes(element)}"
-							@mousedown.prevent="dragFace(element, key, $event)"
-							@touchstart.prevent="dragFace(element, key, $event)"
-							@contextmenu="selectFace(element, key, $event, true, false)"
-							:style="{
-								left: toPixels(Math.min(face.uv[0], face.uv[2]), -1),
-								top: toPixels(Math.min(face.uv[1], face.uv[3]), -1),
-								'--width': toPixels(Math.abs(face.uv_size[0]), 2),
-								'--height': toPixels(Math.abs(face.uv_size[1]), 2),
-							}"
-						>
-							<template v-if="isFaceSelected(element, key) && mode == 'uv' && !(display_uv === 'all_elements' && !mappable_elements.includes(element))">
-								{{ face_names[key] || '' }}
-								<div class="uv_resize_side horizontal" @mousedown="resizeFace(key, $event, 0, -1)" @touchstart.prevent="resizeFace(key, $event, 0, -1)" style="width: var(--width)"></div>
-								<div class="uv_resize_side horizontal" @mousedown="resizeFace(key, $event, 0, 1)" @touchstart.prevent="resizeFace(key, $event, 0, 1)" style="top: var(--height); width: var(--width)"></div>
-								<div class="uv_resize_side vertical" @mousedown="resizeFace(key, $event, -1, 0)" @touchstart.prevent="resizeFace(key, $event, -1, 0)" style="height: var(--height)"></div>
-								<div class="uv_resize_side vertical" @mousedown="resizeFace(key, $event, 1, 0)" @touchstart.prevent="resizeFace(key, $event, 1, 0)" style="left: var(--width); height: var(--height)"></div>
-								<div class="uv_resize_corner uv_c_nw" :class="{main_corner: !face.rotation}" @mousedown="resizeFace(key, $event, -1, -1)" @touchstart.prevent="resizeFace(key, $event, -1, -1)" style="left: 0; top: 0">
-									<div class="uv_rotate_field" v-if="cube_uv_rotation && face.rotation == 0" @mousedown.stop="rotateFace($event)" @touchstart.prevent.stop="rotateFace($event)"></div>
-								</div>
-								<div class="uv_resize_corner uv_c_ne" :class="{main_corner: face.rotation == 270}" @mousedown="resizeFace(key, $event, 1, -1)" @touchstart.prevent="resizeFace(key, $event, 1, -1)" style="left: var(--width); top: 0">
-									<div class="uv_rotate_field" v-if="cube_uv_rotation && face.rotation == 270" @mousedown.stop="rotateFace($event)" @touchstart.prevent.stop="rotateFace($event)"></div>
-								</div>
-								<div class="uv_resize_corner uv_c_sw" :class="{main_corner: face.rotation == 90}" @mousedown="resizeFace(key, $event, -1, 1)" @touchstart.prevent="resizeFace(key, $event, -1, 1)" style="left: 0; top: var(--height)">
-									<div class="uv_rotate_field" v-if="cube_uv_rotation && face.rotation == 90" @mousedown.stop="rotateFace($event)" @touchstart.prevent.stop="rotateFace($event)"></div>
-								</div>
-								<div class="uv_resize_corner uv_c_se" :class="{main_corner: face.rotation == 180}" @mousedown="resizeFace(key, $event, 1, 1)" @touchstart.prevent="resizeFace(key, $event, 1, 1)" style="left: var(--width); top: var(--height)">
-									<div class="uv_rotate_field" v-if="cube_uv_rotation && face.rotation == 180" @mousedown.stop="rotateFace($event)" @touchstart.prevent.stop="rotateFace($event)"></div>
-								</div>
-							</template>
-						</div>
-					</template>
-					
-					<div v-if="element.getTypeBehavior('cube_faces') && element.box_uv" class="cube_box_uv uv_face"
-						:key="element.uuid"
-						@mousedown.prevent="dragFace(element, null, $event)"
-						@touchstart.prevent="dragFace(element, null, $event)"
-						@click.prevent="selectCube(element, $event)"
-						:class="{unselected: display_uv === 'all_elements' && !mappable_elements.includes(element)}"
-						:style="{left: toPixels(element.uv_offset[0]), top: toPixels(element.uv_offset[1])}"
-					>
-						<div class="uv_fill" v-if="element.size(1, 'box_uv') > 0" :style="{left: '-1px', top: toPixels(element.size(2, 'box_uv'), -1), width: toPixels(element.size(2, 'box_uv')*2 + element.size(0, 'box_uv')*2, 2), height: toPixels(element.size(1, 'box_uv'), 2)}" />
-						<div class="uv_fill" v-if="element.size(0, 'box_uv') > 0" :style="{left: toPixels(element.size(2, 'box_uv'), -1), top: '-1px', width: toPixels(element.size(0, 'box_uv')*2, 2), height: toPixels(element.size(2, 'box_uv'), 2), borderBottom: element.size(1, 'box_uv') > 0 ? 'none' : undefined}" />
-						<div :style="{left: toPixels(element.size(2, 'box_uv'), -1), top: element.size(0, 'box_uv') > 0 ? '-1px' : toPixels(element.size(2, 'box_uv'), -1), width: toPixels(element.size(0, 'box_uv'), 2), height: toPixels( (element.size(0, 'box_uv') > 0 ? element.size(2, 'box_uv') : 0) + element.size(1, 'box_uv'), 2), borderRight: element.size(0, 'box_uv') == 0 ? 'none' : undefined}" />
-						<div v-if="element.size(1, 'box_uv') > 0 && element.size(0, 'box_uv') > 0" :style="{left: toPixels(element.size(2, 'box_uv')*2 + element.size(0, 'box_uv'), -1), top: toPixels(element.size(2, 'box_uv'), -1), width: toPixels(element.size(0, 'box_uv'), 2), height: toPixels(element.size(1, 'box_uv'), 2)}" />
-					</div>
-
-					<template v-if="element.type == 'mesh'">
-						<div class="mesh_uv_face uv_face"
-							v-for="(face, key) in filterMeshFaces(element)" :key="element.uuid + ':' + key"
-							v-if="face.vertices.length > 2 && (display_uv !== 'selected_faces' || mode == 'paint' || isFaceSelected(element, key)) && face.getTexture() == texture"
-							:class="{selected: isFaceSelected(element, key)}"
-							@mousedown.prevent="dragFace(element, key, $event)"
-							@touchstart.prevent="dragFace(element, key, $event)"
-							:style="{
-								left: toPixels(getMeshFaceCorner(face, 0), -1),
-								top: toPixels(getMeshFaceCorner(face, 1), -1),
-								width: toPixels(getMeshFaceWidth(face, 0), 2),
-								height: toPixels(getMeshFaceWidth(face, 1), 2),
-							}"
-						>
-							<svg>
-								<polygon :points="getMeshFaceOutline(face)" />
-							</svg>
-							<template v-if="mode == 'uv' && isFaceSelected(element, key)">
-								<div class="uv_mesh_vertex" v-for="(key, index) in face.vertices"
-									:class="{main_corner: index == 0, selected: element.getSelectedVertices().includes(key)}"
-									@mousedown.prevent.stop="dragVertices(element, key, $event)" @touchstart.prevent.stop="dragVertices(element, key, $event)"
-									:style="{left: toPixels( face.uv[key][0] - getMeshFaceCorner(face, 0) ), top: toPixels( face.uv[key][1] - getMeshFaceCorner(face, 1) )}"
-								>
-								</div>
-							</template>
-						</div>
-					</template>
-
-				</template>
 
 				<div id="uv_selection_frame" v-if="mode == 'uv' && isScalingAvailable()" :style="getUVSelectionFrameStyle()">
 					<div id="uv_rotate_handle" v-if="isRotatingAvailable()"
@@ -340,6 +265,9 @@
 </template>
 
 <script>
+import { dragHelper } from "../util/drag_helper";
+import { editUVSizeDialog } from "./uv_size";
+
 export default {
 	data() {return {
 		mode: 'uv',
@@ -499,6 +427,119 @@ export default {
 	},
 	methods: {
 		tl,
+		updateElementOutlines() {
+			let canvas = this.$refs.uvCanvas
+			let viewport = this.$refs.viewport
+			let frame = this.$refs.frame
+			let ctx = canvas.getContext("2d")
+
+            let frameLeft = this.getFrameMargin()[0] + 4 - viewport.scrollLeft
+			let frameTop = this.getFrameMargin()[1] + 4 - viewport.scrollTop
+
+			let frameStyle = window.getComputedStyle(frame);
+			// CSS Numbers (convert from CSS to int)
+			let faceOutlineWidth = parseInt(frameStyle.getPropertyValue("--uv-line-width").trim(), 10);
+			// CSS Colors
+			let textColor = frameStyle.getPropertyValue("--color-subtle_text").trim();
+			let faceOutlineColor = frameStyle.getPropertyValue("--color-text").trim();
+			let faceOutlineColorHover = frameStyle.getPropertyValue("--color-uv-hover").trim();
+			let faceBackgroundColor = frameStyle.getPropertyValue("--color-uv-background").trim();
+			let faceBackgroundColorHover = frameStyle.getPropertyValue("--color-uv-background-hover").trim();
+			
+			ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+			function drawOutlinedDot(x, y, radius, outline, fill) {
+				ctx.fillStyle = outline
+				ctx.beginPath();
+				ctx.arc(x, y, radius + 1, 0, 2 * Math.PI);
+				ctx.stroke();
+				ctx.fillStyle = fill
+				ctx.beginPath();
+				ctx.arc(x, y, radius, 0, 2 * Math.PI);
+				ctx.fill();
+			}
+
+			function drawOutlinedDot(x, y, radius, outline, fill) {
+				ctx.fillStyle = outline
+				ctx.beginPath();
+				ctx.arc(x, y, radius + 1, 0, 2 * Math.PI);
+				ctx.fill();
+				ctx.fillStyle = fill
+				ctx.beginPath();
+				ctx.arc(x, y, radius, 0, 2 * Math.PI);
+				ctx.fill();
+			}
+
+			let selectedFaces = []
+			let faceQueue = []
+			if (!this.getDisplayedUVElements().length) return;
+			for(let element of this.getDisplayedUVElements()) {
+				// Cube face
+				if(element.getTypeBehavior('cube_faces')) {
+
+					for(let [key, face] of Object.entries(element.faces)) {
+						let hasTexture = (face.getTexture() == this.texture || this.texture == 0) && face.texture !== null
+						let showAllFaces = this.display_uv !== 'selected_faces'
+						let isPainting = this.mode == 'paint'
+						let faceIsSelected = this.isFaceSelected(element, key)
+						let canSelectFace = (showAllFaces || isPainting || faceIsSelected || element.getTypeBehavior('select_faces') == false)
+
+						if(hasTexture && canSelectFace) {
+							let faceData = {
+								type: "cube",
+								left: this.toPixelValue(Math.min(face.uv[0], face.uv[2])) + frameLeft,
+								top: this.toPixelValue(Math.min(face.uv[1], face.uv[3])) + frameTop,
+								width: this.toPixelValue(Math.abs(face.uv_size[0])),
+								height: this.toPixelValue(Math.abs(face.uv_size[1])),
+								selected: faceIsSelected,
+								element: element
+							}
+							faceQueue.push(faceData)
+							if (faceIsSelected) selectedFaces.push({...faceData})
+						}
+					}
+				}
+			}
+
+			// Draw face outlines
+			for (let face of faceQueue) {
+				if (face.type == "cube") {
+					let left = face.left
+					let top = face.top
+					let width = face.width
+					let height = face.height
+					
+					ctx.fillStyle = faceBackgroundColor
+					ctx.fillRect(left, top, width, height)
+
+					if (!face.selected || face.element.box_uv) {
+						ctx.lineWidth = faceOutlineWidth
+						ctx.strokeStyle = faceOutlineColor
+						ctx.strokeRect(left, top, width, height)
+					}
+				}
+			}
+
+			// Draw selected face outlines
+			for (let face of selectedFaces) {
+				if (face.type == "cube" && !face.element.box_uv) {
+					let left = face.left
+					let top = face.top
+					let width = face.width
+					let height = face.height
+
+					ctx.lineWidth = faceOutlineWidth
+					ctx.strokeStyle = faceOutlineColorHover
+					ctx.strokeRect(left, top, width, height)
+
+					let vertRadius = 5
+					drawOutlinedDot(left, top, vertRadius, "black", "white");
+					drawOutlinedDot(left, top + height, vertRadius, "black", "white");
+					drawOutlinedDot(left + width, top, vertRadius, "black", "white");
+					drawOutlinedDot(left + width, top + height, vertRadius, "black", "white");
+				}
+			}
+		},
 		isTilingVisible() {
 			if (!this.texture) return false;
 			return (this.overlay_canvas_mode == 'tiled' && this.mode == 'paint') || (this.texture.wrap_mode == 'repeat' && this.mode == 'uv');
@@ -536,12 +577,14 @@ export default {
 			}
 			this.updateTextureCanvas();
 			UVEditor.updateSelectionOutline(false);
+			this.updateElementOutlines();
 		},
 		centerView() {
 			if (this.$refs.viewport) {
 				this.$refs.viewport.scrollLeft = this.width/2;
 				this.$refs.viewport.scrollTop = this.height/2;
 				UVEditor.updateUVNavigator();
+				this.updateElementOutlines();
 			}
 			this.centered_view = true;
 		},
@@ -633,6 +676,7 @@ export default {
 		},
 		onScroll() {
 			UVEditor.updateUVNavigator();
+			this.updateElementOutlines();
 		},
 		onMouseWheel(event) {
 			let is_zoom_gesture = event.ctrlKey && !Pressing.ctrl;
@@ -672,6 +716,7 @@ export default {
 
 					this.updateTextureCanvas();
 					UVEditor.updateUVNavigator();
+					this.updateElementOutlines();
 					
 					if (this.mode == 'paint') {
 						this.mouse_coords.active = false;
@@ -742,6 +787,7 @@ export default {
 					UVEditor.vue.centered_view = (viewport.scrollLeft == margin[0] || viewport.scrollLeft == margin_center[0])
 												&& (viewport.scrollTop == margin[1] || viewport.scrollTop == margin_center[1]);
 					UVEditor.updateUVNavigator();
+					UVEditor.vue.updateElementOutlines();
 				}
 				function touchPanStop(e) {
 					document.removeEventListener('touchmove', touchPan);
@@ -786,6 +832,7 @@ export default {
 					UVEditor.vue.centered_view = (viewport.scrollLeft == margin[0] || viewport.scrollLeft == margin_center[0])
 												&& (viewport.scrollTop == margin[1] || viewport.scrollTop == margin_center[1]);
 					UVEditor.updateUVNavigator();
+					UVEditor.vue.updateElementOutlines();
 				}
 				function dragMouseWheelStop(e) {
 					removeEventListeners(document, 'pointermove', dragMouseWheel);
@@ -1054,6 +1101,7 @@ export default {
 			}
 			UVEditor.vue.updateTexture();
 			UVEditor.updateFaceSelection();
+			UVEditor.vue.updateElementOutlines();
 
 			if (support_dragging) {
 				dragHelper(event, {
@@ -1669,6 +1717,7 @@ export default {
 							}
 						})
 					})
+					UVEditor.vue.updateElementOutlines();
 					return [x, y]
 				},
 				onEnd: () => {
@@ -1756,8 +1805,11 @@ export default {
 			})
 		},
 
+		toPixelValue(uv_coord, offset = 0) {
+			return (uv_coord / this.uv_resolution[0] * this.inner_width + offset);
+		},
 		toPixels(uv_coord, offset = 0) {
-			return (uv_coord / this.uv_resolution[0] * this.inner_width + offset) + 'px';
+			return this.toPixelValue(uv_coord, offset) + 'px';
 		},
 		toTexturePixels(tex_coord, axis, offset = 0) {
 			if (axis == 1 && this.texture.currentFrame > 0) {

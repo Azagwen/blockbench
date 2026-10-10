@@ -1,7 +1,5 @@
-import { editUVSizeDialog } from "./uv_size";
 import { PointerTarget } from "../interface/pointer_target";
-import { dragHelper } from "../util/drag_helper";
-import UvEditor from "./UvEditor.vue"
+import UVEditorPanel from "./UVEditor.vue"
 
 // Image manipulation helpers for UV+texture transforms
 function flipImageDataH(imageData) {
@@ -926,6 +924,7 @@ export const UVEditor = {
 		})
 		this.displayTools()
 		this.vue.$forceUpdate()
+		this.vue.updateElementOutlines();
 	},
 	slideSize(modify, axis) {
 		let limit = this.getResolution(axis);
@@ -959,6 +958,7 @@ export const UVEditor = {
 		this.displayTools()
 		this.disableAutoUV()
 		this.vue.$forceUpdate()
+		this.vue.updateElementOutlines();
 	},
 	getResolution(axis, texture) {
 		return axis ? UVEditor.getUVHeight() : UVEditor.getUVWidth();
@@ -2734,6 +2734,7 @@ BARS.defineActions(function() {
 			let value = toggle_value ? 'all_elements' : 'selected_elements';
 			UVEditor.vue.display_uv = value;
 			settings.display_uv.set(value);
+			UVEditor.vue.updateElementOutlines();
 		}
 	})
 	new Toggle('paint_mode_uv_overlay', {
@@ -2798,7 +2799,7 @@ Interface.definePanels(function() {
 				UVEditor.vue.hidden = Format.image_editor ? false : !this.isVisible();
 			})
 		},
-		component: UvEditor
+		component: UVEditorPanel
 	})
 	Object.defineProperty(UVEditor.panel, 'icon', {
 		get() {
