@@ -1683,6 +1683,7 @@ export const UVEditor = {
 		})
 		this.loadData();
 		this.message('uv_editor.rotated')
+		UVEditor.vue.updateElementOutlines();
 	},
 	setRotation(value) {
 		value = parseInt(value)
@@ -1694,6 +1695,7 @@ export const UVEditor = {
 		})
 		this.loadData()
 		this.message('uv_editor.rotated')
+		UVEditor.vue.updateElementOutlines();
 	},
 	selectGridSize(event) {
 	},

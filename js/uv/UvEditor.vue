@@ -1000,6 +1000,7 @@ export default {
 						}
 					})
 					updateSelection();
+					UVEditor.vue.updateElementOutlines();
 				}
 				function stop(e2) {
 					removeEventListeners(document, 'pointermove', drag);
@@ -1147,6 +1148,7 @@ export default {
 						}
 					}
 					UVEditor.vue.$forceUpdate();
+					UVEditor.vue.updateElementOutlines();
 				}
 			}
 		},
@@ -1643,6 +1645,7 @@ export default {
 					last_angle = angle;
 					UVEditor.loadData();
 					UVEditor.vue.$forceUpdate();
+					UVEditor.vue.updateElementOutlines();
 					Canvas.updateView({elements, element_aspects: {uv: true}});
 					scope.dragging_uv = true;
 				}
@@ -1744,6 +1747,7 @@ export default {
 				sel_vertices.replace([vertex_key]);
 			}
 			updateSelection();
+			UVEditor.vue.updateElementOutlines();
 
 			let elements = UVEditor.getMappableElements();
 			Undo.initEdit({elements, uv_only: true})
