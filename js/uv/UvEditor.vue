@@ -102,8 +102,6 @@
 		<canvas
 			id="uv_element_outlines"
 			ref="uvCanvas"
-			:width=(width)
-			:height=(height)
 		></canvas>
 
 		<div id="uv_viewport"
@@ -433,8 +431,12 @@ export default {
 			let frame = this.$refs.frame;
 			let ctx = canvas.getContext("2d");
 
-            let frameLeft = this.getFrameMargin()[0] + 4 - viewport.scrollLeft;
-			let frameTop = this.getFrameMargin()[1] + 4 - viewport.scrollTop;
+            let viewportLeft = this.getFrameMargin()[0] + 4 - viewport.scrollLeft;
+			let viewportTop = this.getFrameMargin()[1] + 4 - viewport.scrollTop;
+			let mouseX = this.toPixelValue(this.mouse_coords.x) + viewportLeft
+			let mouseY = this.toPixelValue(this.mouse_coords.y) + viewportTop
+
+			// console.log(`(${mouseX}, ${mouseY}), (${viewportLeft}, ${viewportTop})`);
 
 			let canvasWidth = canvas.clientWidth;
 			let canvasHeight = canvas.clientHeight;
@@ -443,6 +445,7 @@ export default {
 			let canvasRight = canvasLeft + canvasWidth;
 			let canvasBottom = canvasTop + canvasHeight;
 
+			let viewportStyle = window.getComputedStyle(frame);
 			let frameStyle = window.getComputedStyle(frame);
 			// CSS Numbers (convert from CSS to int)
 			let faceOutlineWidth = parseInt(frameStyle.getPropertyValue("--uv-line-width").trim(), 10);
@@ -450,26 +453,20 @@ export default {
 			let textColor = frameStyle.getPropertyValue("--color-subtle_text").trim();
 			let faceOutlineColor = frameStyle.getPropertyValue("--color-text").trim();
 			let faceOutlineColorHover = frameStyle.getPropertyValue("--color-uv-hover").trim();
+			let faceOutlineColorSelected = frameStyle.getPropertyValue("--color-accent").trim();
+			let faceOutlineColorUnselected = frameStyle.getPropertyValue("--color-uv-unselected").trim();
 			let faceBackgroundColor = frameStyle.getPropertyValue("--color-uv-background").trim();
 			let faceBackgroundColorHover = frameStyle.getPropertyValue("--color-uv-background-hover").trim();
-			
+
+			// Scale Canvas
+			canvas.width = this.width + 8;
+			canvas.height = this.height + 8;
 			
 			function drawOutlinedDot(x, y, radius, outline, fill) {
 				ctx.fillStyle = outline;
 				ctx.beginPath();
 				ctx.arc(x, y, radius + 1, 0, 2 * Math.PI);
 				ctx.stroke();
-				ctx.fillStyle = fill;
-				ctx.beginPath();
-				ctx.arc(x, y, radius, 0, 2 * Math.PI);
-				ctx.fill();
-			}
-
-			function drawOutlinedDot(x, y, radius, outline, fill) {
-				ctx.fillStyle = outline;
-				ctx.beginPath();
-				ctx.arc(x, y, radius + 1, 0, 2 * Math.PI);
-				ctx.fill();
 				ctx.fillStyle = fill;
 				ctx.beginPath();
 				ctx.arc(x, y, radius, 0, 2 * Math.PI);
@@ -483,21 +480,20 @@ export default {
 			for(let element of this.getDisplayedUVElements()) {
 				// Cube face
 				if(element.getTypeBehavior('cube_faces')) {
-
 					for(let [key, face] of Object.entries(element.faces)) {
 						let hasTexture = (face.getTexture() == this.texture || this.texture == 0) && face.texture !== null;
 						let showAllFaces = this.display_uv !== 'selected_faces';
 						let isPainting = this.mode == 'paint';
-						let faceIsSelected = this.isFaceSelected(element, key)
+						let faceIsSelected = this.isFaceSelected(element, key);
 						let canSelectFace = (showAllFaces || isPainting || faceIsSelected || element.getTypeBehavior('select_faces') == false);
 
 						if(hasTexture && canSelectFace) {
-							let expectedLeft = this.toPixelValue(Math.min(face.uv[0], face.uv[2])) + frameLeft;
-							let expectedTop = this.toPixelValue(Math.min(face.uv[1], face.uv[3])) + frameTop;
+							let expectedLeft = this.toPixelValue(Math.min(face.uv[0], face.uv[2])) + viewportLeft;
+							let expectedTop = this.toPixelValue(Math.min(face.uv[1], face.uv[3])) + viewportTop;
 							let expectedWidth = this.toPixelValue(Math.abs(face.uv_size[0]));
 							let expectedHeight = this.toPixelValue(Math.abs(face.uv_size[1]));
-							let expectedRight = (expectedLeft + expectedWidth)
-							let expectedBottom = (expectedTop + expectedHeight)
+							let expectedRight = (expectedLeft + expectedWidth);
+							let expectedBottom = (expectedTop + expectedHeight);
 
 							// Conservative culling: we cull 8 pixels early, and make sure we don't hide 
 							// very wide faces if both sides are out of frame on opposite ends of one axis
@@ -550,10 +546,16 @@ export default {
 					let height = face.height;
 					
 					ctx.fillStyle = faceBackgroundColor;
-					ctx.fillRect(left, top, width, height);
-
 					ctx.lineWidth = faceOutlineWidth;
 					ctx.strokeStyle = faceOutlineColor;
+
+					let showAllElements = this.display_uv === 'all_elements' ;
+					let elementNotSelected = !this.mappable_elements.includes(face.element);
+					if (face.element.box_uv) {
+						ctx.strokeStyle = (showAllElements && elementNotSelected) ? faceOutlineColorUnselected : faceOutlineColorSelected;
+					}
+
+					ctx.fillRect(left, top, width, height);
 					ctx.strokeRect(left, top, width, height);
 				}
 			}
@@ -567,7 +569,7 @@ export default {
 					let height = face.height;
 
 					ctx.lineWidth = faceOutlineWidth;
-					ctx.strokeStyle = faceOutlineColorHover;
+					ctx.strokeStyle = faceOutlineColorSelected;
 					ctx.strokeRect(left, top, width, height);
 				}
 			}
@@ -721,6 +723,7 @@ export default {
 
 				Blockbench.setStatusBarText(`${trimFloatNumber(length+1, 1)} - ${trimFloatNumber(angle, 1)}°`);
 			}
+			this.updateElementOutlines();
 		},
 		onScroll() {
 			UVEditor.updateUVNavigator();
@@ -1693,7 +1696,6 @@ export default {
 					last_angle = angle;
 					UVEditor.loadData();
 					UVEditor.vue.$forceUpdate();
-					UVEditor.vue.updateElementOutlines();
 					Canvas.updateView({elements, element_aspects: {uv: true}});
 					scope.dragging_uv = true;
 				}
@@ -1983,7 +1985,7 @@ export default {
 					offset = BarItems.slider_brush_size.get()%2 == 0 && Toolbox.selected.brush?.offset_even_radius ? 0 : 0.5;
 				}
 				let left = this.mouse_coords.x;
-				let top =  this.mouse_coords.y - (this.texture ? this.texture.currentFrame * this.texture.display_height : 0);
+				let top =  this.mouse_coords.y - ((this.texture && this.texture.frameCount) ? this.texture.currentFrame * this.texture.display_height : 0);
 				left = (left + offset) * pixel_size;
 				top =  (top + offset) * pixel_size;
 				//size

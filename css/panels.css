@@ -2379,7 +2379,7 @@ span.controller_state_section_info {
 	}
 	#uv_element_outlines {
 		position: fixed;
-		z-index: 1;
+		z-index: 2;
 		pointer-events: none; /* WHY IS THIS HANDLED IN CSS??? */
 	}
 	#uv_frame {

@@ -750,6 +750,7 @@ export const UVEditor = {
 		);
 		this.updateUVNavigator();
 		this.vue.$forceUpdate();
+		this.vue.updateElementOutlines();
 		return this;
 	},
 	applyTexture(texture) {
@@ -1131,6 +1132,7 @@ export const UVEditor = {
 				selected_faces.replace([face_key]);
 			}
 			UVEditor.vue.$forceUpdate();
+			UVEditor.vue.updateElementOutlines();
 			updateSelection();
 		}
 	},
@@ -1683,7 +1685,6 @@ export const UVEditor = {
 		})
 		this.loadData();
 		this.message('uv_editor.rotated')
-		UVEditor.vue.updateElementOutlines();
 	},
 	setRotation(value) {
 		value = parseInt(value)
@@ -1695,7 +1696,6 @@ export const UVEditor = {
 		})
 		this.loadData()
 		this.message('uv_editor.rotated')
-		UVEditor.vue.updateElementOutlines();
 	},
 	selectGridSize(event) {
 	},
