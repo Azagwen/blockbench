@@ -428,13 +428,20 @@ export default {
 	methods: {
 		tl,
 		updateElementOutlines() {
-			let canvas = this.$refs.uvCanvas
-			let viewport = this.$refs.viewport
-			let frame = this.$refs.frame
-			let ctx = canvas.getContext("2d")
+			let canvas = this.$refs.uvCanvas;
+			let viewport = this.$refs.viewport;
+			let frame = this.$refs.frame;
+			let ctx = canvas.getContext("2d");
 
-            let frameLeft = this.getFrameMargin()[0] + 4 - viewport.scrollLeft
-			let frameTop = this.getFrameMargin()[1] + 4 - viewport.scrollTop
+            let frameLeft = this.getFrameMargin()[0] + 4 - viewport.scrollLeft;
+			let frameTop = this.getFrameMargin()[1] + 4 - viewport.scrollTop;
+
+			let canvasWidth = canvas.clientWidth;
+			let canvasHeight = canvas.clientHeight;
+			let canvasLeft = canvas.clientLeft;
+			let canvasTop = canvas.clientTop;
+			let canvasRight = canvasLeft + canvasWidth;
+			let canvasBottom = canvasTop + canvasHeight;
 
 			let frameStyle = window.getComputedStyle(frame);
 			// CSS Numbers (convert from CSS to int)
@@ -446,56 +453,89 @@ export default {
 			let faceBackgroundColor = frameStyle.getPropertyValue("--color-uv-background").trim();
 			let faceBackgroundColorHover = frameStyle.getPropertyValue("--color-uv-background-hover").trim();
 			
-			ctx.clearRect(0, 0, canvas.width, canvas.height)
-
+			
 			function drawOutlinedDot(x, y, radius, outline, fill) {
-				ctx.fillStyle = outline
+				ctx.fillStyle = outline;
 				ctx.beginPath();
 				ctx.arc(x, y, radius + 1, 0, 2 * Math.PI);
 				ctx.stroke();
-				ctx.fillStyle = fill
+				ctx.fillStyle = fill;
 				ctx.beginPath();
 				ctx.arc(x, y, radius, 0, 2 * Math.PI);
 				ctx.fill();
 			}
 
 			function drawOutlinedDot(x, y, radius, outline, fill) {
-				ctx.fillStyle = outline
+				ctx.fillStyle = outline;
 				ctx.beginPath();
 				ctx.arc(x, y, radius + 1, 0, 2 * Math.PI);
 				ctx.fill();
-				ctx.fillStyle = fill
+				ctx.fillStyle = fill;
 				ctx.beginPath();
 				ctx.arc(x, y, radius, 0, 2 * Math.PI);
 				ctx.fill();
 			}
-
-			let selectedFaces = []
-			let faceQueue = []
+			
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
 			if (!this.getDisplayedUVElements().length) return;
+			let selectedFaces = [];
+			let faceQueue = [];
 			for(let element of this.getDisplayedUVElements()) {
 				// Cube face
 				if(element.getTypeBehavior('cube_faces')) {
 
 					for(let [key, face] of Object.entries(element.faces)) {
-						let hasTexture = (face.getTexture() == this.texture || this.texture == 0) && face.texture !== null
-						let showAllFaces = this.display_uv !== 'selected_faces'
-						let isPainting = this.mode == 'paint'
+						let hasTexture = (face.getTexture() == this.texture || this.texture == 0) && face.texture !== null;
+						let showAllFaces = this.display_uv !== 'selected_faces';
+						let isPainting = this.mode == 'paint';
 						let faceIsSelected = this.isFaceSelected(element, key)
-						let canSelectFace = (showAllFaces || isPainting || faceIsSelected || element.getTypeBehavior('select_faces') == false)
+						let canSelectFace = (showAllFaces || isPainting || faceIsSelected || element.getTypeBehavior('select_faces') == false);
 
 						if(hasTexture && canSelectFace) {
+							let expectedLeft = this.toPixelValue(Math.min(face.uv[0], face.uv[2])) + frameLeft;
+							let expectedTop = this.toPixelValue(Math.min(face.uv[1], face.uv[3])) + frameTop;
+							let expectedWidth = this.toPixelValue(Math.abs(face.uv_size[0]));
+							let expectedHeight = this.toPixelValue(Math.abs(face.uv_size[1]));
+							let expectedRight = (expectedLeft + expectedWidth)
+							let expectedBottom = (expectedTop + expectedHeight)
+
+							// Conservative culling: we cull 8 pixels early, and make sure we don't hide 
+							// very wide faces if both sides are out of frame on opposite ends of one axis
+							let cullLeftMin = ((expectedLeft - 8) < canvasLeft);
+							let cullTopMin = ((expectedTop - 8) < canvasTop);
+							let cullRightMin = ((expectedRight - 8) < canvasLeft);
+							let cullBottomMin = ((expectedBottom - 8) < canvasTop);
+
+							let cullLeftMax = ((expectedLeft + 8) > canvasRight);
+							let cullTopMax = ((expectedTop + 8) > canvasBottom);
+							let cullRightMax = ((expectedRight + 8) > canvasRight);
+							let cullBottomMax = ((expectedBottom + 8) > canvasBottom);
+
+							let cullLeft = (cullLeftMin && !cullRightMax) || cullLeftMax;
+							let cullTop = (cullTopMin && !cullBottomMax) || cullTopMax;
+							let cullRight = cullRightMin || (cullRightMax && !cullLeftMin);
+							let cullBottom = cullBottomMin || (cullBottomMax && !cullTopMin);
+
 							let faceData = {
 								type: "cube",
-								left: this.toPixelValue(Math.min(face.uv[0], face.uv[2])) + frameLeft,
-								top: this.toPixelValue(Math.min(face.uv[1], face.uv[3])) + frameTop,
-								width: this.toPixelValue(Math.abs(face.uv_size[0])),
-								height: this.toPixelValue(Math.abs(face.uv_size[1])),
+								left: expectedLeft,
+								right: expectedRight,
+								top: expectedTop,
+								bottom: expectedBottom,
+								width: expectedWidth,
+								height: expectedHeight,
 								selected: faceIsSelected,
-								element: element
-							}
-							faceQueue.push(faceData)
-							if (faceIsSelected) selectedFaces.push({...faceData})
+								element: element,
+								culling: {
+									all: (cullLeft && cullRight) || (cullTop && cullBottom),
+									left: cullLeft,
+									right: cullRight,
+									top: cullTop,
+									bottom: cullBottom
+								}
+							};
+							faceQueue.push(faceData);
+							if (faceIsSelected) selectedFaces.push({...faceData});
 						}
 					}
 				}
@@ -503,40 +543,48 @@ export default {
 
 			// Draw face outlines
 			for (let face of faceQueue) {
-				if (face.type == "cube") {
-					let left = face.left
-					let top = face.top
-					let width = face.width
-					let height = face.height
+				if (face.type == "cube" && !face.culling.all) {
+					let left = face.left;
+					let top = face.top;
+					let width = face.width;
+					let height = face.height;
 					
-					ctx.fillStyle = faceBackgroundColor
-					ctx.fillRect(left, top, width, height)
+					ctx.fillStyle = faceBackgroundColor;
+					ctx.fillRect(left, top, width, height);
 
-					if (!face.selected || face.element.box_uv) {
-						ctx.lineWidth = faceOutlineWidth
-						ctx.strokeStyle = faceOutlineColor
-						ctx.strokeRect(left, top, width, height)
-					}
+					ctx.lineWidth = faceOutlineWidth;
+					ctx.strokeStyle = faceOutlineColor;
+					ctx.strokeRect(left, top, width, height);
 				}
 			}
 
 			// Draw selected face outlines
 			for (let face of selectedFaces) {
+				if (face.type == "cube" && !face.element.box_uv && !face.culling.all) {
+					let left = face.left;
+					let top = face.top;
+					let width = face.width;
+					let height = face.height;
+
+					ctx.lineWidth = faceOutlineWidth;
+					ctx.strokeStyle = faceOutlineColorHover;
+					ctx.strokeRect(left, top, width, height);
+				}
+			}
+
+			// Draw selected face dots
+			for (let face of selectedFaces) {
 				if (face.type == "cube" && !face.element.box_uv) {
-					let left = face.left
-					let top = face.top
-					let width = face.width
-					let height = face.height
+					let left = face.left;
+					let right = face.right;
+					let top = face.top;
+					let bottom = face.bottom;
 
-					ctx.lineWidth = faceOutlineWidth
-					ctx.strokeStyle = faceOutlineColorHover
-					ctx.strokeRect(left, top, width, height)
-
-					let vertRadius = 5
-					drawOutlinedDot(left, top, vertRadius, "black", "white");
-					drawOutlinedDot(left, top + height, vertRadius, "black", "white");
-					drawOutlinedDot(left + width, top, vertRadius, "black", "white");
-					drawOutlinedDot(left + width, top + height, vertRadius, "black", "white");
+					let vertRadius = 5;
+					if (!face.culling.left  && !face.culling.top) drawOutlinedDot(left , top, vertRadius, "black", "white");
+					if (!face.culling.right && !face.culling.top) drawOutlinedDot(right, top, vertRadius, "black", "white");
+					if (!face.culling.right && !face.culling.bottom) drawOutlinedDot(right, bottom, vertRadius, "black", "white");
+					if (!face.culling.left  && !face.culling.bottom) drawOutlinedDot(left , bottom, vertRadius, "black", "white");
 				}
 			}
 		},
