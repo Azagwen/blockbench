@@ -15,7 +15,7 @@
 				{{ face_names[key] }}
 			</li>
 			<li @click="mode = 'face_properties'" class="tool face_properties_toggle">
-				<div class="tooltip">${tl('uv_editor.face_properties')}</div>
+				<div class="tooltip">{{tl('uv_editor.face_properties')}}</div>
 				<i class="material-icons">checklist</i>
 			</li>
 		</div>
@@ -36,22 +36,22 @@
 				<label style="width: 120px;" class="flexible">Texture</label>
 
 				<template v-if="checkFormat({java_face_properties: true})">
-					<label style="width: 58px;" @click="showInfoBox('action.face_tint', 'uv_editor.tint.info')" title="${tl('uv_editor.tint.info')}">
-						${tl('action.face_tint')}
+					<label style="width: 58px;" @click="showInfoBox('action.face_tint', 'uv_editor.tint.info')" :title="tl('uv_editor.tint.info')">
+						{{ tl('action.face_tint') }}
 						<i class="material-icons">info</i>
 					</label>
 				</template>
 
 				<template v-if="checkFormat({cullfaces: true})">
-					<label style="width: 50px;" @click="showInfoBox('action.cullface', 'uv_editor.cullface.info')" title="${tl('uv_editor.cullface.info')}" class="flexible">
-						${tl('action.cullface')}
+					<label style="width: 50px;" @click="showInfoBox('action.cullface', 'uv_editor.cullface.info')" :title="tl('uv_editor.cullface.info')" class="flexible">
+						{{ tl('action.cullface') }}
 						<i class="material-icons">info</i>
 					</label>
 				</template>
 
 				<template v-if="checkFormat({id: 'bedrock_block'})">
-					<label style="width: 100px;" class="flexible" @click="showInfoBox('uv_editor.face_properties.material_instance', 'uv_editor.material_instance.info')" title="${tl('uv_editor.material_instance.info')}">
-						${tl('uv_editor.face_properties.material_instance')}
+					<label style="width: 100px;" class="flexible" @click="showInfoBox('uv_editor.face_properties.material_instance', 'uv_editor.material_instance.info')" :title="tl('uv_editor.material_instance.info')">
+						{{ tl('uv_editor.face_properties.material_instance') }}
 						<i class="material-icons">info</i>
 					</label>
 				</template>
@@ -72,23 +72,23 @@
 					<div class="face_properties_texture" :face_texture="face_texture = mappable_elements[0].faces[key].getTexture()" @click="openFaceTextureMenu($event)">
 						<img :src="face_texture.source" class="texture_icon" width="32px" height="32px" alt="" v-if="face_texture && face_texture.show_icon" />
 						<div class="texture_dummy_icon" v-else></div>
-						{{ face_texture ? face_texture.name : '${tl('+menu.cube.texture.blank+')}' }}
+						{{ face_texture ? face_texture.name : tl('menu.cube.texture.blank') }}
 					</div>
 
 					<template v-if="checkFormat({java_face_properties: true})">
 						<div style="width: 58px; display: flex;">
-							<input type="checkbox" title="${tl('action.face_tint')}" :checked="mappable_elements[0].faces[key].tint > -1" @change="toggleFaceTint(key, $event)">
-							<input type="number" title="${tl('action.face_tint')}" style="width: 30px;" :value="mappable_elements[0].faces[key].tint" min="0" step="1" @input="changeFaceTint(key, $event)" v-if="mappable_elements[0].faces[key].tint > -1">
+							<input type="checkbox" :title="$l(action.face_tint)" :checked="mappable_elements[0].faces[key].tint > -1" @change="toggleFaceTint(key, $event)">
+							<input type="number" :title="$l(action.face_tint)" style="width: 30px;" :value="mappable_elements[0].faces[key].tint" min="0" step="1" @input="changeFaceTint(key, $event)" v-if="mappable_elements[0].faces[key].tint > -1">
 						</div>
 					</template>
 
 					<template v-if="checkFormat({cullfaces: true})">
-						<select-input class="flexible" title="${tl('action.cullface')}" :value="mappable_elements[0].faces[key].cullface" @input="setCullface(key, $event)" :options="cullface_options" />
+						<select-input class="flexible" :title="tl('action.cullface')" :value="mappable_elements[0].faces[key].cullface" @input="setCullface(key, $event)" :options="cullface_options" />
 					</template>
 
 					<template v-if="checkFormat({id: 'bedrock_block'})">
 						<input type="text" style="width: 100px;" class="flexible dark_bordered"
-							title="${tl('uv_editor.face_properties.material_instance')}"
+							:title="tl('uv_editor.face_properties.material_instance')"
 							v-model="mappable_elements[0].faces[key].material_name"
 							@focus="startInputMaterialInstance($event)"
 							@focusout="endInputMaterialInstance($event, key)"
@@ -328,7 +328,9 @@ export default {
 			east: tl('face.east'),
 			up: tl('face.up'),
 			down: tl('face.down'),
-		}
+		},
+
+		rendered_faces: []
 	}},
 	computed: {
 		inner_width() {
@@ -433,8 +435,8 @@ export default {
 
             let viewportLeft = this.getFrameMargin()[0] + 4 - viewport.scrollLeft;
 			let viewportTop = this.getFrameMargin()[1] + 4 - viewport.scrollTop;
-			let mouseX = this.toPixelValue(this.mouse_coords.x) + viewportLeft
-			let mouseY = this.toPixelValue(this.mouse_coords.y) + viewportTop
+			let mouseX = this.toPixelValue(this.mouse_coords.x) + viewportLeft + 0.5;
+			let mouseY = this.toPixelValue(this.mouse_coords.y) + viewportTop + 0.5;
 
 			// console.log(`(${mouseX}, ${mouseY}), (${viewportLeft}, ${viewportTop})`);
 
@@ -475,8 +477,8 @@ export default {
 			
 			ctx.clearRect(0, 0, canvas.width, canvas.height);
 			if (!this.getDisplayedUVElements().length) return;
-			let selectedFaces = [];
-			let faceQueue = [];
+			let highlightedFaces = [];
+			this.rendered_faces = [];
 			for(let element of this.getDisplayedUVElements()) {
 				// Cube face
 				if(element.getTypeBehavior('cube_faces')) {
@@ -484,8 +486,8 @@ export default {
 						let hasTexture = (face.getTexture() == this.texture || this.texture == 0) && face.texture !== null;
 						let showAllFaces = this.display_uv !== 'selected_faces';
 						let isPainting = this.mode == 'paint';
-						let faceIsSelected = this.isFaceSelected(element, key);
-						let canSelectFace = (showAllFaces || isPainting || faceIsSelected || element.getTypeBehavior('select_faces') == false);
+						let isSelected = this.isFaceSelected(element, key);
+						let canSelectFace = (showAllFaces || isPainting || isSelected || element.getTypeBehavior('select_faces') == false);
 
 						if(hasTexture && canSelectFace) {
 							let expectedLeft = this.toPixelValue(Math.min(face.uv[0], face.uv[2])) + viewportLeft;
@@ -495,8 +497,8 @@ export default {
 							let expectedRight = (expectedLeft + expectedWidth);
 							let expectedBottom = (expectedTop + expectedHeight);
 
-							// Conservative culling: we cull 8 pixels early, and make sure we don't hide 
-							// very wide faces if both sides are out of frame on opposite ends of one axis
+							// We cull 8 pixels early, and make sure we don't hide very wide
+							// faces if both sides are out of frame on opposite ends of one axis
 							let cullLeftMin = ((expectedLeft - 8) < canvasLeft);
 							let cullTopMin = ((expectedTop - 8) < canvasTop);
 							let cullRightMin = ((expectedRight - 8) < canvasLeft);
@@ -512,16 +514,23 @@ export default {
 							let cullRight = cullRightMin || (cullRightMax && !cullLeftMin);
 							let cullBottom = cullBottomMin || (cullBottomMax && !cullTopMin);
 
+							// Check if this face is under the mouse
+							let isMouseOverOnX = (mouseX >= expectedLeft) && (mouseX <= expectedRight);
+							let isMouseOverOnY = (mouseY >= expectedTop) && (mouseY <= expectedBottom);
+							let isFaceHovered = isMouseOverOnX && isMouseOverOnY
+
+							// Finish data
 							let faceData = {
 								type: "cube",
+								element: element,
 								left: expectedLeft,
 								right: expectedRight,
 								top: expectedTop,
 								bottom: expectedBottom,
 								width: expectedWidth,
 								height: expectedHeight,
-								selected: faceIsSelected,
-								element: element,
+								hovered: isFaceHovered,
+								selected: isSelected,
 								culling: {
 									all: (cullLeft && cullRight) || (cullTop && cullBottom),
 									left: cullLeft,
@@ -530,22 +539,22 @@ export default {
 									bottom: cullBottom
 								}
 							};
-							faceQueue.push(faceData);
-							if (faceIsSelected) selectedFaces.push({...faceData});
+							this.rendered_faces.push(faceData);
+							if (isSelected || isFaceHovered) highlightedFaces.push({...faceData});
 						}
 					}
 				}
 			}
 
 			// Draw face outlines
-			for (let face of faceQueue) {
+			for (let face of this.rendered_faces) {
 				if (face.type == "cube" && !face.culling.all) {
 					let left = face.left;
 					let top = face.top;
 					let width = face.width;
 					let height = face.height;
 					
-					ctx.fillStyle = faceBackgroundColor;
+					ctx.fillStyle = face.hovered ? faceBackgroundColorHover : faceBackgroundColor;
 					ctx.lineWidth = faceOutlineWidth;
 					ctx.strokeStyle = faceOutlineColor;
 
@@ -560,8 +569,8 @@ export default {
 				}
 			}
 
-			// Draw selected face outlines
-			for (let face of selectedFaces) {
+			// Draw selected & hovered face outlines
+			for (let face of highlightedFaces) {
 				if (face.type == "cube" && !face.element.box_uv && !face.culling.all) {
 					let left = face.left;
 					let top = face.top;
@@ -569,14 +578,14 @@ export default {
 					let height = face.height;
 
 					ctx.lineWidth = faceOutlineWidth;
-					ctx.strokeStyle = faceOutlineColorSelected;
+					ctx.strokeStyle = face.hovered ? faceOutlineColorHover : faceOutlineColorSelected;
 					ctx.strokeRect(left, top, width, height);
 				}
 			}
 
 			// Draw selected face dots
-			for (let face of selectedFaces) {
-				if (face.type == "cube" && !face.element.box_uv) {
+			for (let face of highlightedFaces) {
+				if (face.type == "cube" && !face.element.box_uv && face.selected) {
 					let left = face.left;
 					let right = face.right;
 					let top = face.top;
