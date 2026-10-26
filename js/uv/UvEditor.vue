@@ -262,7 +262,7 @@
 	</div>
 </template>
 
-<script>
+<script lang="js">
 import { dragHelper } from "../util/drag_helper";
 import { editUVSizeDialog } from "./uv_size";
 
@@ -330,7 +330,8 @@ export default {
 			down: tl('face.down'),
 		},
 
-		rendered_faces: []
+		rendered_faces: [],
+		custom_render_channels: []
 	}},
 	computed: {
 		inner_width() {
@@ -427,58 +428,78 @@ export default {
 	},
 	methods: {
 		tl,
+		// TODO: Re-add edge and point dragging on cube faces
+		// TODO: Re-add mesh faces
+		// TODO: Add spline UV, and hooks for custom UVs
 		updateElementOutlines() {
 			let canvas = this.$refs.uvCanvas;
 			let viewport = this.$refs.viewport;
 			let frame = this.$refs.frame;
 			let ctx = canvas.getContext("2d");
 
-            let viewportLeft = this.getFrameMargin()[0] + 4 - viewport.scrollLeft;
-			let viewportTop = this.getFrameMargin()[1] + 4 - viewport.scrollTop;
-			let mouseX = this.toPixelValue(this.mouse_coords.x) + viewportLeft + 0.5;
-			let mouseY = this.toPixelValue(this.mouse_coords.y) + viewportTop + 0.5;
-
 			// console.log(`(${mouseX}, ${mouseY}), (${viewportLeft}, ${viewportTop})`);
-
+			let viewportLeft = this.getFrameMargin()[0] + 4 - viewport.scrollLeft;
+			let viewportTop = this.getFrameMargin()[1] + 4 - viewport.scrollTop;
 			let canvasWidth = canvas.clientWidth;
 			let canvasHeight = canvas.clientHeight;
 			let canvasLeft = canvas.clientLeft;
 			let canvasTop = canvas.clientTop;
-			let canvasRight = canvasLeft + canvasWidth;
-			let canvasBottom = canvasTop + canvasHeight;
+			let panelTransform = {
+				canvas: {
+					width: canvasWidth,
+					height: canvasHeight,
+					left: canvasLeft,
+					top: canvasTop,
+					right: canvasLeft + canvasWidth,
+					bottom: canvasTop + canvasHeight
+				},
+				viewport: {
+					left: viewportLeft,
+					top: viewportTop
+				},
+				mouse: {
+					x: this.toPixelValue(this.mouse_coords.x) + viewportLeft + 0.5,
+					y: this.toPixelValue(this.mouse_coords.y) + viewportTop + 0.5
+				}
+			}
 
 			let viewportStyle = window.getComputedStyle(frame);
 			let frameStyle = window.getComputedStyle(frame);
-			// CSS Numbers (convert from CSS to int)
-			let faceOutlineWidth = parseInt(frameStyle.getPropertyValue("--uv-line-width").trim(), 10);
-			// CSS Colors
-			let textColor = frameStyle.getPropertyValue("--color-subtle_text").trim();
-			let faceOutlineColor = frameStyle.getPropertyValue("--color-text").trim();
-			let faceOutlineColorHover = frameStyle.getPropertyValue("--color-uv-hover").trim();
-			let faceOutlineColorSelected = frameStyle.getPropertyValue("--color-accent").trim();
-			let faceOutlineColorUnselected = frameStyle.getPropertyValue("--color-uv-unselected").trim();
-			let faceBackgroundColor = frameStyle.getPropertyValue("--color-uv-background").trim();
-			let faceBackgroundColorHover = frameStyle.getPropertyValue("--color-uv-background-hover").trim();
+			let faceStyle = {
+				outline: {
+					width: parseInt(frameStyle.getPropertyValue("--uv-line-width").trim(), 10),
+					base: frameStyle.getPropertyValue("--color-text").trim(),
+					hover: frameStyle.getPropertyValue("--color-uv-hover").trim(),
+					selected: frameStyle.getPropertyValue("--color-accent").trim(),
+					unselected: frameStyle.getPropertyValue("--color-uv-unselected").trim()
+				},
+				background: {
+					base: frameStyle.getPropertyValue("--color-uv-background").trim(),
+					hover: frameStyle.getPropertyValue("--color-uv-background-hover").trim()
+				},
+				dot: {
+					radius: 5,
+					outline: "black",
+					background: "white"
+				},
+				text: {
+					base: frameStyle.getPropertyValue("--color-subtle_text").trim()
+				}
+			}
 
 			// Scale Canvas
 			canvas.width = this.width + 8;
 			canvas.height = this.height + 8;
 			
-			function drawOutlinedDot(x, y, radius, outline, fill) {
-				ctx.fillStyle = outline;
-				ctx.beginPath();
-				ctx.arc(x, y, radius + 1, 0, 2 * Math.PI);
-				ctx.stroke();
-				ctx.fillStyle = fill;
-				ctx.beginPath();
-				ctx.arc(x, y, radius, 0, 2 * Math.PI);
-				ctx.fill();
-			}
-			
 			ctx.clearRect(0, 0, canvas.width, canvas.height);
 			if (!this.getDisplayedUVElements().length) return;
-			let highlightedFaces = [];
 			this.rendered_faces = [];
+			this.drawCubeFaces(ctx, panelTransform, faceStyle);
+			this.custom_render_channels.forEach(f => f(ctx, panelTransform, faceStyle));
+		},
+		drawCubeFaces(ctx, panelTransform, style) {
+			console.log(ctx);
+			let highlightedFaces = [];
 			for(let element of this.getDisplayedUVElements()) {
 				// Cube face
 				if(element.getTypeBehavior('cube_faces')) {
@@ -490,8 +511,8 @@ export default {
 						let canSelectFace = (showAllFaces || isPainting || isSelected || element.getTypeBehavior('select_faces') == false);
 
 						if(hasTexture && canSelectFace) {
-							let expectedLeft = this.toPixelValue(Math.min(face.uv[0], face.uv[2])) + viewportLeft;
-							let expectedTop = this.toPixelValue(Math.min(face.uv[1], face.uv[3])) + viewportTop;
+							let expectedLeft = this.toPixelValue(Math.min(face.uv[0], face.uv[2])) + panelTransform.viewport.left;
+							let expectedTop = this.toPixelValue(Math.min(face.uv[1], face.uv[3])) + panelTransform.viewport.top;
 							let expectedWidth = this.toPixelValue(Math.abs(face.uv_size[0]));
 							let expectedHeight = this.toPixelValue(Math.abs(face.uv_size[1]));
 							let expectedRight = (expectedLeft + expectedWidth);
@@ -499,15 +520,15 @@ export default {
 
 							// We cull 8 pixels early, and make sure we don't hide very wide
 							// faces if both sides are out of frame on opposite ends of one axis
-							let cullLeftMin = ((expectedLeft - 8) < canvasLeft);
-							let cullTopMin = ((expectedTop - 8) < canvasTop);
-							let cullRightMin = ((expectedRight - 8) < canvasLeft);
-							let cullBottomMin = ((expectedBottom - 8) < canvasTop);
+							let cullLeftMin = ((expectedLeft - 8) < panelTransform.canvas.left);
+							let cullTopMin = ((expectedTop - 8) < panelTransform.canvas.top);
+							let cullRightMin = ((expectedRight - 8) < panelTransform.canvas.left);
+							let cullBottomMin = ((expectedBottom - 8) < panelTransform.canvas.top);
 
-							let cullLeftMax = ((expectedLeft + 8) > canvasRight);
-							let cullTopMax = ((expectedTop + 8) > canvasBottom);
-							let cullRightMax = ((expectedRight + 8) > canvasRight);
-							let cullBottomMax = ((expectedBottom + 8) > canvasBottom);
+							let cullLeftMax = ((expectedLeft + 8) > panelTransform.canvas.right);
+							let cullTopMax = ((expectedTop + 8) > panelTransform.canvas.bottom);
+							let cullRightMax = ((expectedRight + 8) > panelTransform.canvas.right);
+							let cullBottomMax = ((expectedBottom + 8) > panelTransform.canvas.bottom);
 
 							let cullLeft = (cullLeftMin && !cullRightMax) || cullLeftMax;
 							let cullTop = (cullTopMin && !cullBottomMax) || cullTopMax;
@@ -515,8 +536,8 @@ export default {
 							let cullBottom = cullBottomMin || (cullBottomMax && !cullTopMin);
 
 							// Check if this face is under the mouse
-							let isMouseOverOnX = (mouseX >= expectedLeft) && (mouseX <= expectedRight);
-							let isMouseOverOnY = (mouseY >= expectedTop) && (mouseY <= expectedBottom);
+							let isMouseOverOnX = (panelTransform.mouse.x >= expectedLeft) && (panelTransform.mouse.x <= expectedRight);
+							let isMouseOverOnY = (panelTransform.mouse.y >= expectedTop) && (panelTransform.mouse.y <= expectedBottom);
 							let isFaceHovered = isMouseOverOnX && isMouseOverOnY
 
 							// Finish data
@@ -554,14 +575,14 @@ export default {
 					let width = face.width;
 					let height = face.height;
 					
-					ctx.fillStyle = face.hovered ? faceBackgroundColorHover : faceBackgroundColor;
-					ctx.lineWidth = faceOutlineWidth;
-					ctx.strokeStyle = faceOutlineColor;
+					ctx.fillStyle = face.hovered ? style.background.hover : style.background.base;
+					ctx.lineWidth = style.outline.width;
+					ctx.strokeStyle = style.outline.base;
 
 					let showAllElements = this.display_uv === 'all_elements' ;
 					let elementNotSelected = !this.mappable_elements.includes(face.element);
 					if (face.element.box_uv) {
-						ctx.strokeStyle = (showAllElements && elementNotSelected) ? faceOutlineColorUnselected : faceOutlineColorSelected;
+						ctx.strokeStyle = (showAllElements && elementNotSelected) ? style.outline.unselected : style.outline.selected;
 					}
 
 					ctx.fillRect(left, top, width, height);
@@ -577,8 +598,8 @@ export default {
 					let width = face.width;
 					let height = face.height;
 
-					ctx.lineWidth = faceOutlineWidth;
-					ctx.strokeStyle = face.hovered ? faceOutlineColorHover : faceOutlineColorSelected;
+					ctx.lineWidth = style.outline.width;
+					ctx.strokeStyle = face.hovered ? style.outline.base : style.outline.selected;
 					ctx.strokeRect(left, top, width, height);
 				}
 			}
@@ -591,11 +612,11 @@ export default {
 					let top = face.top;
 					let bottom = face.bottom;
 
-					let vertRadius = 5;
-					if (!face.culling.left  && !face.culling.top) drawOutlinedDot(left , top, vertRadius, "black", "white");
-					if (!face.culling.right && !face.culling.top) drawOutlinedDot(right, top, vertRadius, "black", "white");
-					if (!face.culling.right && !face.culling.bottom) drawOutlinedDot(right, bottom, vertRadius, "black", "white");
-					if (!face.culling.left  && !face.culling.bottom) drawOutlinedDot(left , bottom, vertRadius, "black", "white");
+					let dotStyle = { stroke: style.dot.outline, fill: style.dot.background }
+					if (!face.culling.left  && !face.culling.top) ctx.drawOutlinedDot(left , top, style.dot.radius, dotStyle);
+					if (!face.culling.right && !face.culling.top) ctx.drawOutlinedDot(right, top, style.dot.radius, dotStyle);
+					if (!face.culling.right && !face.culling.bottom) ctx.drawOutlinedDot(right, bottom, style.dot.radius, dotStyle);
+					if (!face.culling.left  && !face.culling.bottom) ctx.drawOutlinedDot(left , bottom, style.dot.radius, dotStyle);
 				}
 			}
 		},

@@ -132,6 +132,10 @@ declare global {
 		V3_toEuler(): THREE.Euler
 	}
 
+	interface CanvasRenderingContext2D {
+		drawOutlinedDot(x: number, y: number, radius: number, style: { stroke: string, fill: string }): void
+	}
+
 	interface Event {
 		shiftKey?: boolean
 	}

@@ -1,5 +1,5 @@
 import { PointerTarget } from "../interface/pointer_target";
-import UVEditorPanel from "./UVEditor.vue"
+import UVEditorPanel from "./UvEditor.vue"
 
 // Image manipulation helpers for UV+texture transforms
 function flipImageDataH(imageData) {
