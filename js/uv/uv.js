@@ -750,7 +750,7 @@ export const UVEditor = {
 		);
 		this.updateUVNavigator();
 		this.vue.$forceUpdate();
-		this.vue.updateElementOutlines();
+		this.vue.tickOutlineCanvas();
 		return this;
 	},
 	applyTexture(texture) {
@@ -925,7 +925,7 @@ export const UVEditor = {
 		})
 		this.displayTools()
 		this.vue.$forceUpdate()
-		this.vue.updateElementOutlines();
+		this.vue.tickOutlineCanvas();
 	},
 	slideSize(modify, axis) {
 		let limit = this.getResolution(axis);
@@ -959,7 +959,7 @@ export const UVEditor = {
 		this.displayTools()
 		this.disableAutoUV()
 		this.vue.$forceUpdate()
-		this.vue.updateElementOutlines();
+		this.vue.tickOutlineCanvas();
 	},
 	getResolution(axis, texture) {
 		return axis ? UVEditor.getUVHeight() : UVEditor.getUVWidth();
@@ -1132,7 +1132,7 @@ export const UVEditor = {
 				selected_faces.replace([face_key]);
 			}
 			UVEditor.vue.$forceUpdate();
-			UVEditor.vue.updateElementOutlines();
+			UVEditor.vue.tickOutlineCanvas();
 			updateSelection();
 		}
 	},
@@ -2736,7 +2736,7 @@ BARS.defineActions(function() {
 			let value = toggle_value ? 'all_elements' : 'selected_elements';
 			UVEditor.vue.display_uv = value;
 			settings.display_uv.set(value);
-			UVEditor.vue.updateElementOutlines();
+			UVEditor.vue.tickOutlineCanvas();
 		}
 	})
 	new Toggle('paint_mode_uv_overlay', {

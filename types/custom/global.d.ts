@@ -170,6 +170,7 @@ declare global {
 		V2_multiply(values: ArrayVector2): ArrayVector2
 		V2_divide(x: number, y: number): ArrayVector2
 		V2_divide(values: ArrayVector2): ArrayVector2
+		V2_length(): number
 	}
 
 	interface Event {

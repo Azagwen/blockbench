@@ -219,3 +219,10 @@ Array.prototype.V2_divide = function(x, y) {
 	this[1] /= parseFloat(y)||1;
 	return this;
 }
+Array.prototype.V2_length = function() {
+	let [x, y] = this;
+	if (y === undefined) y = x;
+	let a = parseFloat(x)||1;
+	let b = parseFloat(y)||1;
+	return Math.sqrt(a*a + b*b);
+}

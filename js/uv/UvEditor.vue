@@ -431,7 +431,7 @@ export default {
 		// TODO: Re-add edge and point dragging on cube faces
 		// TODO: Re-add mesh faces
 		// TODO: Add spline UV, and hooks for custom UVs
-		updateElementOutlines() {
+		tickOutlineCanvas() {
 			let canvas = this.$refs.uvCanvas;
 			let viewport = this.$refs.viewport;
 			let frame = this.$refs.frame;
@@ -497,8 +497,44 @@ export default {
 			this.drawCubeFaces(ctx, panelTransform, faceStyle);
 			this.custom_render_channels.forEach(f => f(ctx, panelTransform, faceStyle));
 		},
+		getFaceCullInfo(top, left, bottom, right, canvasTransform) {
+			// make sure we don't hide very wide faces if both 
+			// sides are out of frame on opposite ends of one axis.
+			// - 0 and + 0 are leftovers from culling early, 
+			// this was aborted due to corners culling too soon
+			let cullLeftMin = ((left - 0) < canvasTransform.left);
+			let cullTopMin = ((top - 0) < canvasTransform.top);
+			let cullRightMin = ((right - 0) < canvasTransform.left);
+			let cullBottomMin = ((bottom - 0) < canvasTransform.top);
+
+			let cullLeftMax = ((left + 0) > canvasTransform.right);
+			let cullTopMax = ((top + 0) > canvasTransform.bottom);
+			let cullRightMax = ((right + 0) > canvasTransform.right);
+			let cullBottomMax = ((bottom + 0) > canvasTransform.bottom);
+
+			return {
+				left: (cullLeftMin && !cullRightMax) || cullLeftMax,
+				top: (cullTopMin && !cullBottomMax) || cullTopMax,
+				right: cullRightMin || (cullRightMax && !cullLeftMin),
+				bottom: cullBottomMin || (cullBottomMax && !cullTopMin)
+			};
+		},
+		isFaceHovered(top, left, bottom, right, mouseTransform) {
+			// Check if this face is under the mouse
+			let isMouseOverOnX = (mouseTransform.x >= left) && (mouseTransform.x <= right);
+			let isMouseOverOnY = (mouseTransform.y >= top) && (mouseTransform.y <= bottom);
+			return isMouseOverOnX && isMouseOverOnY
+		},
+		isEdgeHovered(mouse, start, end, threshold) {
+		    let pa = [...mouse].V2_subtract(start);
+			let ba = [...end].V2_subtract(start);
+			let dot_pa = (pa[0] * ba[0]) + (pa[1] * ba[1]);
+			let dot_ba = (ba[0] * ba[0]) + (ba[1] * ba[1]);
+		    let h = Math.clamp(dot_pa / dot_ba, 0.0, 1.0);
+		    return pa.V2_subtract(ba * h).V2_length() < threshold;
+		},
 		drawCubeFaces(ctx, panelTransform, style) {
-			console.log(ctx);
+			// console.log(ctx); 
 			let highlightedFaces = [];
 			for(let element of this.getDisplayedUVElements()) {
 				// Cube face
@@ -518,27 +554,9 @@ export default {
 							let expectedRight = (expectedLeft + expectedWidth);
 							let expectedBottom = (expectedTop + expectedHeight);
 
-							// We cull 8 pixels early, and make sure we don't hide very wide
-							// faces if both sides are out of frame on opposite ends of one axis
-							let cullLeftMin = ((expectedLeft - 8) < panelTransform.canvas.left);
-							let cullTopMin = ((expectedTop - 8) < panelTransform.canvas.top);
-							let cullRightMin = ((expectedRight - 8) < panelTransform.canvas.left);
-							let cullBottomMin = ((expectedBottom - 8) < panelTransform.canvas.top);
-
-							let cullLeftMax = ((expectedLeft + 8) > panelTransform.canvas.right);
-							let cullTopMax = ((expectedTop + 8) > panelTransform.canvas.bottom);
-							let cullRightMax = ((expectedRight + 8) > panelTransform.canvas.right);
-							let cullBottomMax = ((expectedBottom + 8) > panelTransform.canvas.bottom);
-
-							let cullLeft = (cullLeftMin && !cullRightMax) || cullLeftMax;
-							let cullTop = (cullTopMin && !cullBottomMax) || cullTopMax;
-							let cullRight = cullRightMin || (cullRightMax && !cullLeftMin);
-							let cullBottom = cullBottomMin || (cullBottomMax && !cullTopMin);
-
-							// Check if this face is under the mouse
-							let isMouseOverOnX = (panelTransform.mouse.x >= expectedLeft) && (panelTransform.mouse.x <= expectedRight);
-							let isMouseOverOnY = (panelTransform.mouse.y >= expectedTop) && (panelTransform.mouse.y <= expectedBottom);
-							let isFaceHovered = isMouseOverOnX && isMouseOverOnY
+							let shouldFaceCull = this.getFaceCullInfo(expectedTop, expectedLeft, expectedBottom, expectedRight, panelTransform.canvas);
+							let isFaceHovered = this.isFaceHovered(expectedTop, expectedLeft, expectedBottom, expectedRight, panelTransform.mouse);
+							let mouseArr = [panelTransform.mouse.x, panelTransform.mouse.y];
 
 							// Finish data
 							let faceData = {
@@ -550,14 +568,20 @@ export default {
 								bottom: expectedBottom,
 								width: expectedWidth,
 								height: expectedHeight,
-								hovered: isFaceHovered,
+								hovered: {
+									all: isFaceHovered,
+									left: this.isEdgeHovered(mouseArr, [expectedLeft, expectedTop], [expectedLeft, expectedBottom], 64.0),
+									right: this.isEdgeHovered(mouseArr, [expectedRight, expectedTop], [expectedRight, expectedBottom], 64.0),
+									top: this.isEdgeHovered(mouseArr, [expectedLeft, expectedTop], [expectedRight, expectedTop], 64.0),
+									bottom: this.isEdgeHovered(mouseArr, [expectedLeft, expectedBottom], [expectedRight, expectedBottom], 64.0)
+								},
 								selected: isSelected,
 								culling: {
-									all: (cullLeft && cullRight) || (cullTop && cullBottom),
-									left: cullLeft,
-									right: cullRight,
-									top: cullTop,
-									bottom: cullBottom
+									all: (shouldFaceCull.left && shouldFaceCull.right) || (shouldFaceCull.top && shouldFaceCull.bottom),
+									left: shouldFaceCull.left,
+									right: shouldFaceCull.right,
+									top: shouldFaceCull.top,
+									bottom: shouldFaceCull.bottom
 								}
 							};
 							this.rendered_faces.push(faceData);
@@ -575,7 +599,7 @@ export default {
 					let width = face.width;
 					let height = face.height;
 					
-					ctx.fillStyle = face.hovered ? style.background.hover : style.background.base;
+					ctx.fillStyle = face.hovered.all ? style.background.hover : style.background.base;
 					ctx.lineWidth = style.outline.width;
 					ctx.strokeStyle = style.outline.base;
 
@@ -599,7 +623,7 @@ export default {
 					let height = face.height;
 
 					ctx.lineWidth = style.outline.width;
-					ctx.strokeStyle = face.hovered ? style.outline.base : style.outline.selected;
+					ctx.strokeStyle = face.hovered.all ? style.outline.base : style.outline.selected;
 					ctx.strokeRect(left, top, width, height);
 				}
 			}
@@ -657,14 +681,14 @@ export default {
 			}
 			this.updateTextureCanvas();
 			UVEditor.updateSelectionOutline(false);
-			this.updateElementOutlines();
+			this.tickOutlineCanvas();
 		},
 		centerView() {
 			if (this.$refs.viewport) {
 				this.$refs.viewport.scrollLeft = this.width/2;
 				this.$refs.viewport.scrollTop = this.height/2;
 				UVEditor.updateUVNavigator();
-				this.updateElementOutlines();
+				this.tickOutlineCanvas();
 			}
 			this.centered_view = true;
 		},
@@ -735,7 +759,7 @@ export default {
 		},
 		updateMouseCoords(event) {					
 			convertTouchEvent(event);
-			if (!this.texture) return;
+			if (!this.texture && this.mode == "paint") return; // We abort only if this is paint mode, as edit mode uses these coordinates to select faces
 			if (PointerTarget.active) return;
 
 			var {x, y} = UVEditor.getBrushCoordinates(event, this.texture);
@@ -753,11 +777,11 @@ export default {
 
 				Blockbench.setStatusBarText(`${trimFloatNumber(length+1, 1)} - ${trimFloatNumber(angle, 1)}°`);
 			}
-			this.updateElementOutlines();
+			this.tickOutlineCanvas();
 		},
 		onScroll() {
 			UVEditor.updateUVNavigator();
-			this.updateElementOutlines();
+			this.tickOutlineCanvas();
 		},
 		onMouseWheel(event) {
 			let is_zoom_gesture = event.ctrlKey && !Pressing.ctrl;
@@ -797,7 +821,7 @@ export default {
 
 					this.updateTextureCanvas();
 					UVEditor.updateUVNavigator();
-					this.updateElementOutlines();
+					this.tickOutlineCanvas();
 					
 					if (this.mode == 'paint') {
 						this.mouse_coords.active = false;
@@ -868,7 +892,7 @@ export default {
 					UVEditor.vue.centered_view = (viewport.scrollLeft == margin[0] || viewport.scrollLeft == margin_center[0])
 												&& (viewport.scrollTop == margin[1] || viewport.scrollTop == margin_center[1]);
 					UVEditor.updateUVNavigator();
-					UVEditor.vue.updateElementOutlines();
+					UVEditor.vue.tickOutlineCanvas();
 				}
 				function touchPanStop(e) {
 					document.removeEventListener('touchmove', touchPan);
@@ -913,7 +937,7 @@ export default {
 					UVEditor.vue.centered_view = (viewport.scrollLeft == margin[0] || viewport.scrollLeft == margin_center[0])
 												&& (viewport.scrollTop == margin[1] || viewport.scrollTop == margin_center[1]);
 					UVEditor.updateUVNavigator();
-					UVEditor.vue.updateElementOutlines();
+					UVEditor.vue.tickOutlineCanvas();
 				}
 				function dragMouseWheelStop(e) {
 					removeEventListeners(document, 'pointermove', dragMouseWheel);
@@ -1081,7 +1105,7 @@ export default {
 						}
 					})
 					updateSelection();
-					UVEditor.vue.updateElementOutlines();
+					UVEditor.vue.tickOutlineCanvas();
 				}
 				function stop(e2) {
 					removeEventListeners(document, 'pointermove', drag);
@@ -1183,7 +1207,7 @@ export default {
 			}
 			UVEditor.vue.updateTexture();
 			UVEditor.updateFaceSelection();
-			UVEditor.vue.updateElementOutlines();
+			UVEditor.vue.tickOutlineCanvas();
 
 			if (support_dragging) {
 				dragHelper(event, {
@@ -1229,7 +1253,7 @@ export default {
 						}
 					}
 					UVEditor.vue.$forceUpdate();
-					UVEditor.vue.updateElementOutlines();
+					UVEditor.vue.tickOutlineCanvas();
 				}
 			}
 		},
@@ -1800,7 +1824,7 @@ export default {
 							}
 						})
 					})
-					UVEditor.vue.updateElementOutlines();
+					UVEditor.vue.tickOutlineCanvas();
 					return [x, y]
 				},
 				onEnd: () => {
@@ -1827,7 +1851,7 @@ export default {
 				sel_vertices.replace([vertex_key]);
 			}
 			updateSelection();
-			UVEditor.vue.updateElementOutlines();
+			UVEditor.vue.tickOutlineCanvas();
 
 			let elements = UVEditor.getMappableElements();
 			Undo.initEdit({elements, uv_only: true})
