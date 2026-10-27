@@ -224,5 +224,5 @@ Array.prototype.V2_length = function() {
 	if (y === undefined) y = x;
 	let a = parseFloat(x)||1;
 	let b = parseFloat(y)||1;
-	return Math.sqrt(a*a + b*b);
+	return Math.sqrt(a**2 + b**2);
 }

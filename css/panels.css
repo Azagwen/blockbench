@@ -2396,6 +2396,7 @@ span.controller_state_section_info {
 		--color-uv-background: rgba(50, 70, 240, 0.14);
 		--color-uv-background-hover: rgba(50, 70, 240, 0.3);
 		--uv-line-width: 2px;
+		--uv-line-width-hovered: 6px;
 	}
 	#uv_frame .selection_rectangle {
 		z-index: 8;

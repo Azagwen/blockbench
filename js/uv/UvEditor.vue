@@ -467,7 +467,8 @@ export default {
 			let frameStyle = window.getComputedStyle(frame);
 			let faceStyle = {
 				outline: {
-					width: parseInt(frameStyle.getPropertyValue("--uv-line-width").trim(), 10),
+					widthBase: parseInt(frameStyle.getPropertyValue("--uv-line-width").trim(), 10),
+					widthHover: parseInt(frameStyle.getPropertyValue("--uv-line-width-hovered").trim(), 10),
 					base: frameStyle.getPropertyValue("--color-text").trim(),
 					hover: frameStyle.getPropertyValue("--color-uv-hover").trim(),
 					selected: frameStyle.getPropertyValue("--color-accent").trim(),
@@ -525,13 +526,28 @@ export default {
 			let isMouseOverOnY = (mouseTransform.y >= top) && (mouseTransform.y <= bottom);
 			return isMouseOverOnX && isMouseOverOnY
 		},
+		// https://iquilezles.org/articles/distfunctions2d/
+		// float sdSegment( in vec2 p, in vec2 a, in vec2 b )
+		// {
+		//     vec2 pa = p-a, ba = b-a;
+		//     float h = clamp( dot(pa,ba)/dot(ba,ba), 0.0, 1.0 );
+		//     return length( pa - ba*h );
+		// }
 		isEdgeHovered(mouse, start, end, threshold) {
-		    let pa = [...mouse].V2_subtract(start);
-			let ba = [...end].V2_subtract(start);
+			let p = [...mouse];
+			let a = [...start];
+			let b = [...end];
+
+		    let pa = p.V2_subtract(a);
+			let ba = b.V2_subtract(a);
 			let dot_pa = (pa[0] * ba[0]) + (pa[1] * ba[1]);
 			let dot_ba = (ba[0] * ba[0]) + (ba[1] * ba[1]);
 		    let h = Math.clamp(dot_pa / dot_ba, 0.0, 1.0);
-		    return pa.V2_subtract(ba * h).V2_length() < threshold;
+			let sdf = pa.V2_subtract(ba.V2_multiply(h)).V2_length();
+		    return {
+				isHover: (sdf - threshold) < 0.0,
+				proximity: sdf
+			};
 		},
 		drawCubeFaces(ctx, panelTransform, style) {
 			// console.log(ctx); 
@@ -557,6 +573,11 @@ export default {
 							let shouldFaceCull = this.getFaceCullInfo(expectedTop, expectedLeft, expectedBottom, expectedRight, panelTransform.canvas);
 							let isFaceHovered = this.isFaceHovered(expectedTop, expectedLeft, expectedBottom, expectedRight, panelTransform.mouse);
 							let mouseArr = [panelTransform.mouse.x, panelTransform.mouse.y];
+							let topLeft = [expectedLeft, expectedTop];
+							let bottomLeft = [expectedLeft, expectedBottom];
+							let topRight = [expectedRight, expectedTop];
+							let bottomRight = [expectedRight, expectedBottom];
+							let hoverRadius = 8.0;
 
 							// Finish data
 							let faceData = {
@@ -570,10 +591,10 @@ export default {
 								height: expectedHeight,
 								hovered: {
 									all: isFaceHovered,
-									left: this.isEdgeHovered(mouseArr, [expectedLeft, expectedTop], [expectedLeft, expectedBottom], 64.0),
-									right: this.isEdgeHovered(mouseArr, [expectedRight, expectedTop], [expectedRight, expectedBottom], 64.0),
-									top: this.isEdgeHovered(mouseArr, [expectedLeft, expectedTop], [expectedRight, expectedTop], 64.0),
-									bottom: this.isEdgeHovered(mouseArr, [expectedLeft, expectedBottom], [expectedRight, expectedBottom], 64.0)
+									left:   this.isEdgeHovered(mouseArr, topLeft   , bottomLeft , hoverRadius),
+									right:  this.isEdgeHovered(mouseArr, topRight  , bottomRight, hoverRadius),
+									top:    this.isEdgeHovered(mouseArr, topLeft   , topRight   , hoverRadius),
+									bottom: this.isEdgeHovered(mouseArr, bottomLeft, bottomRight, hoverRadius)
 								},
 								selected: isSelected,
 								culling: {
@@ -600,7 +621,7 @@ export default {
 					let height = face.height;
 					
 					ctx.fillStyle = face.hovered.all ? style.background.hover : style.background.base;
-					ctx.lineWidth = style.outline.width;
+					ctx.lineWidth = style.outline.widthBase;
 					ctx.strokeStyle = style.outline.base;
 
 					let showAllElements = this.display_uv === 'all_elements' ;
@@ -619,12 +640,34 @@ export default {
 				if (face.type == "cube" && !face.element.box_uv && !face.culling.all) {
 					let left = face.left;
 					let top = face.top;
+					let right = face.right;
+					let bottom = face.bottom;
 					let width = face.width;
 					let height = face.height;
 
-					ctx.lineWidth = style.outline.width;
+					ctx.lineWidth = style.outline.widthBase;
 					ctx.strokeStyle = face.hovered.all ? style.outline.base : style.outline.selected;
 					ctx.strokeRect(left, top, width, height);
+					
+					ctx.lineWidth = style.outline.widthHover;
+					ctx.beginPath();
+					if (face.hovered.left.isHover) {
+						ctx.moveTo(left , top);
+						ctx.lineTo(left , bottom);
+					}
+					if (face.hovered.right.isHover) { 
+						ctx.moveTo(right, top);
+						ctx.lineTo(right, bottom);
+					}
+					if (face.hovered.top.isHover) { 
+						ctx.moveTo(left , top);
+						ctx.lineTo(right, top);
+					}
+					if (face.hovered.bottom.isHover) { 
+						ctx.moveTo(left , bottom);
+						ctx.lineTo(right, bottom);
+					}
+					ctx.stroke();
 				}
 			}
 
