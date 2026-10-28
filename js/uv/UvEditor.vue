@@ -578,6 +578,14 @@ export default {
 							let topRight = [expectedRight, expectedTop];
 							let bottomRight = [expectedRight, expectedBottom];
 							let hoverRadius = 8.0;
+							let edgeHoverDataLeft = this.isEdgeHovered(mouseArr, topLeft   , bottomLeft , hoverRadius);
+							let edgeHoverDataRight = this.isEdgeHovered(mouseArr, topRight  , bottomRight, hoverRadius);
+							let edgeHoverDataTop = this.isEdgeHovered(mouseArr, topLeft   , topRight   , hoverRadius);
+							let edgeHoverDataBottom = this.isEdgeHovered(mouseArr, bottomLeft, bottomRight, hoverRadius);
+							let isEdgeHoveredLeft = edgeHoverDataLeft.isHover;
+							let isEdgeHoveredRight = edgeHoverDataRight.isHover;
+							let isEdgeHoveredTop = edgeHoverDataTop.isHover;
+							let isEdgeHoveredBottom = edgeHoverDataBottom.isHover;
 
 							// Finish data
 							let faceData = {
@@ -590,11 +598,11 @@ export default {
 								width: expectedWidth,
 								height: expectedHeight,
 								hovered: {
-									all: isFaceHovered,
-									left:   this.isEdgeHovered(mouseArr, topLeft   , bottomLeft , hoverRadius),
-									right:  this.isEdgeHovered(mouseArr, topRight  , bottomRight, hoverRadius),
-									top:    this.isEdgeHovered(mouseArr, topLeft   , topRight   , hoverRadius),
-									bottom: this.isEdgeHovered(mouseArr, bottomLeft, bottomRight, hoverRadius)
+									all: isFaceHovered || isEdgeHoveredLeft || isEdgeHoveredRight || isEdgeHoveredTop || isEdgeHoveredBottom,
+									left: edgeHoverDataLeft,
+									right: edgeHoverDataRight,
+									top: edgeHoverDataTop,
+									bottom: edgeHoverDataBottom 
 								},
 								selected: isSelected,
 								culling: {
@@ -606,7 +614,9 @@ export default {
 								}
 							};
 							this.rendered_faces.push(faceData);
-							if (isSelected || isFaceHovered) highlightedFaces.push({...faceData});
+							if (isSelected || isFaceHovered || isEdgeHoveredLeft || isEdgeHoveredRight || isEdgeHoveredTop || isEdgeHoveredBottom) {
+								highlightedFaces.push({...faceData});
+							}
 						}
 					}
 				}
@@ -649,25 +659,12 @@ export default {
 					ctx.strokeStyle = face.hovered.all ? style.outline.base : style.outline.selected;
 					ctx.strokeRect(left, top, width, height);
 					
-					ctx.lineWidth = style.outline.widthHover;
-					ctx.beginPath();
-					if (face.hovered.left.isHover) {
-						ctx.moveTo(left , top);
-						ctx.lineTo(left , bottom);
-					}
-					if (face.hovered.right.isHover) { 
-						ctx.moveTo(right, top);
-						ctx.lineTo(right, bottom);
-					}
-					if (face.hovered.top.isHover) { 
-						ctx.moveTo(left , top);
-						ctx.lineTo(right, top);
-					}
-					if (face.hovered.bottom.isHover) { 
-						ctx.moveTo(left , bottom);
-						ctx.lineTo(right, bottom);
-					}
-					ctx.stroke();
+					let hoverWidth = style.outline.widthHover;
+					let edgeStyle = { thickness: hoverWidth, color: style.outline.base}
+					if (face.hovered.left.isHover)   ctx.drawLine([left , top   ], [left , bottom], edgeStyle);
+					if (face.hovered.right.isHover)  ctx.drawLine([right, top   ], [right, bottom], edgeStyle);
+					if (face.hovered.top.isHover)    ctx.drawLine([left , top   ], [right, top   ], edgeStyle);
+					if (face.hovered.bottom.isHover) ctx.drawLine([left , bottom], [right, bottom], edgeStyle);
 				}
 			}
 
@@ -679,7 +676,7 @@ export default {
 					let top = face.top;
 					let bottom = face.bottom;
 
-					let dotStyle = { stroke: style.dot.outline, fill: style.dot.background }
+					let dotStyle = { stroke: style.dot.outline, fill: style.dot.background, thickness: 2 }
 					if (!face.culling.left  && !face.culling.top) ctx.drawOutlinedDot(left , top, style.dot.radius, dotStyle);
 					if (!face.culling.right && !face.culling.top) ctx.drawOutlinedDot(right, top, style.dot.radius, dotStyle);
 					if (!face.culling.right && !face.culling.bottom) ctx.drawOutlinedDot(right, bottom, style.dot.radius, dotStyle);

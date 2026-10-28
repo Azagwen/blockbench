@@ -133,7 +133,8 @@ declare global {
 	}
 
 	interface CanvasRenderingContext2D {
-		drawOutlinedDot(x: number, y: number, radius: number, style: { stroke: string, fill: string }): void
+		drawOutlinedDot(x: number, y: number, radius: number, style: { stroke: string, fill: string, thickness: number }): void
+		drawLine(start: ArrayVector2, end: ArrayVector2, style: { color: string, thickness: number }): void
 	}
 
 	interface Event {
